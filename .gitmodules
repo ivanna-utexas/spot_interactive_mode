@@ -1,0 +1,3 @@
+[submodule "src/Lidar_AI_Solution"]
+	path = src/Lidar_AI_Solution
+	url = https://github.com/ut-amrl/CUDA-CenterPoint-People.git
