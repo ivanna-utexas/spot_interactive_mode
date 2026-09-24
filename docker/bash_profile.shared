@@ -1,0 +1,49 @@
+export PATH=$HOME/.local/bin/:${PATH}
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+
+# Detect workspace name
+# Find the directory in $HOME that contains a 'src' folder
+for dir in $HOME/*/; do
+    if [ -d "${dir}src" ]; then
+        export WORKSPACE_NAME=$(basename "$dir")
+        break
+    fi
+done
+
+# Fallback to spot_companion_mode if not detected
+if [ -z "$WORKSPACE_NAME" ]; then
+    export WORKSPACE_NAME=spot_companion_mode
+fi
+
+# PyTorch
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# ROS
+alias killros2='killall -9 ros2 _ros2_daemon rviz2 gzserver robot_state_publisher gzclient controller_server lifecycle_manager'
+alias cleanpkgs='colcon clean packages --packages-select '
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI=$HOME/${WORKSPACE_NAME}/config/cyclonedds.xml
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+export ROS_LOCALHOST_ONLY=0
+# Set ORIN_IP (Payload) from environment variable if provided
+if [ -n "$ORIN_IP" ]; then
+    export ORIN_IP=$ORIN_IP
+fi
+
+# Set SPOT_IP (Robot Base) from environment variable if provided
+if [ -n "$SPOT_IP" ]; then
+    export SPOT_IP=$SPOT_IP
+fi
+
+source "/opt/ros/humble/setup.bash" --
+if [ -f "$HOME/${WORKSPACE_NAME}/install/setup.bash" ]; then
+    source "$HOME/${WORKSPACE_NAME}/install/setup.bash" --
+fi
+export ROS_VERSION=2
+export PS1='\[\e[0;32m\][docker]:\u@\h:\w$ \[\e[0m\]'
+
+# Export DISPLAY env from the parent if available, otherwise export the turbovnc display :9
+export DISPLAY="${DISPLAY:-:9}"
+
+cd $HOME/${WORKSPACE_NAME}
