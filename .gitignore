@@ -1,0 +1,17 @@
+# colcon build output
+build/
+install/
+log/
+
+# generated at runtime (CenterPoint TensorRT engine, etc.)
+.navws_runtime/
+
+# python
+__pycache__/
+*.pyc
+
+# external repos cloned by scripts/checkout.sh (their own git history, not ours)
+src/spot_ros2/
+src/spot_nav/
+src/spot_velodyne/
+src/ironback_description/
