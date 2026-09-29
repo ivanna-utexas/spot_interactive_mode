@@ -1,0 +1,6 @@
+-v $ROOT:/home/$_UNAME/spot_interactive_mode
+-v $HOME/.ssh/authorized_keys:/home/$_UNAME/.ssh/authorized_keys
+-v $HOME/.bash_history:/home/$_UNAME/.bash_history
+-v /tmp/.X11-unix:/tmp/.X11-unix
+-v /dev:/dev
+-v $HOME/spot_audio_models:/opt/spot_audio_models

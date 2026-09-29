@@ -1,0 +1,8 @@
+# Operator-level mode request. Unlike ModeCommand this always has full
+# confidence and may enable ("stay"/"follow"/"dance") or disable ("idle")
+# interactive mode.
+string mode
+---
+bool success
+string message
+string current_mode

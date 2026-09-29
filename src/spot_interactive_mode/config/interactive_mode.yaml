@@ -1,0 +1,37 @@
+interactive_mode:
+  ros__parameters:
+    control_rate: 50.0             # Hz: machine tick and dance publish rate
+    stand_reassert_rate: 10.0      # Hz: during dance pose segments only (2 Hz looked choppy)
+
+    # Operator. R1 is teleop's auto deadman: it relays cmd_vel_intermediate
+    # to /cmd_vel only while held, so every autonomous base motion stops on
+    # release. Dog mode is moved onto the same button in dog_mode_overrides.yaml.
+    deadman_button: 5
+    joy_timeout: 0.5
+
+    # Switching
+    min_command_confidence: 0.6    # voice commands below this are ignored
+    switch_cooldown: 2.0           # s between accepted voice switches
+    exit_timeout: 4.0              # s for the outgoing controller to let go
+    enter_timeout: 3.0             # s for the incoming controller to confirm
+    dance_settle_time: 0.75        # s the base must be still before dancing
+    post_dance_mode: "stay"        # where a finished or cut-short dance lands
+    require_standing: true
+    not_standing_grace: 2.5        # s; above dog mode's standing_grace (2.0)
+    start_mode: "idle"
+
+    # Dog mode (STAY / FOLLOW)
+    dog_mode_node: "/dog_mode_gaze_controller"
+    dog_mode_retry_period: 0.5
+    stay_allow_turn: false         # STAY holds position and heading; gaze via body pose only
+    follow_allow_turn: true
+
+    # Dance
+    timeline: ""                   # set by the launch file (package timeline.json)
+    calibration_mode: false
+    audio_file: ""                 # e.g. /home/ros/spot_interactive_mode/media/DancingQueenDemoClip.wav
+    audio_device: "plughw:3,0"
+    audio_lead_sec: 0.0            # TODO: copy the team's calibrated value
+    abort_ramp_sec: 0.5
+    rest_locomotion_mode: 1        # gait restored after a dance (teleop walk mode)
+    base_cmd_topic: "cmd_vel_intermediate"

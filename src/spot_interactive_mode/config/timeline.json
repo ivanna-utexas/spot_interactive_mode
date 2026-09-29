@@ -1,0 +1,55 @@
+{
+  "clip_duration_sec": 44.011,
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 11.020,
+      "section": "lyrical_intro",
+      "move": "side_step",
+      "type": "cmd_vel",
+      "axis": "y",
+      "amplitude": 0.5,
+      "period": 1.2,
+      "locomotion_mode": 2
+    },
+    {
+      "start": 11.020,
+      "end": 17.317,
+      "section": "lyrical_intro",
+      "move": "circle_sway",
+      "type": "pose"
+    },
+    {
+      "start": 17.317,
+      "end": 23.670,
+      "section": "dance_jive",
+      "move": "turn_around_sway",
+      "type": "pose"
+    },
+    {
+      "start": 23.670,
+      "end": 29.670,
+      "section": "girl_scene",
+      "move": "twerk",
+      "type": "pose"
+    },
+    {
+      "start": 29.670,
+      "end": 33.874,
+      "section": "dancing_queen",
+      "move": "foot_shuffle",
+      "type": "cmd_vel",
+      "axis": "x",
+      "amplitude": 0.6,
+      "period": 0.35,
+      "locomotion_mode": 8
+    },
+    {
+      "start": 33.874,
+      "end": 44.011,
+      "section": "lyrical_outro",
+      "move": "groove",
+      "type": "pose"
+    }
+  ]
+}

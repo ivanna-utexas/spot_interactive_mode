@@ -1,0 +1,14 @@
+# Applied on top of spot_dog_mode/config/params.yaml when dog mode runs under
+# interactive mode. The interactive_mode node flips approach_enabled and
+# base_turn_enabled at runtime per mode (STAY / FOLLOW); everything else stays
+# the partner's tuning.
+dog_mode_gaze_controller:
+  ros__parameters:
+    start_enabled: false        # interactive_mode enables it
+    deadman_button: 5           # R1, same button that authorizes dance motion
+    approach_enabled: false     # STAY until told otherwise
+    # Must stay true at startup: the node only creates its base-command
+    # publisher if turning or approach is enabled when it starts.
+    base_turn_enabled: true
+    # Minimum following distance (m). Read once at startup, not per mode.
+    approach_distance: 1.0
