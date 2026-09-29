@@ -1,0 +1,6 @@
+uint32 generation_id
+uint32 index
+---
+bool success
+string message
+nav_msgs/Path selected_trajectory

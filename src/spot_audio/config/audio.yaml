@@ -1,0 +1,44 @@
+audio_capture_node:
+  ros__parameters:
+    device_name: "PowerConf"       # ALSA device substring match (case-insensitive)
+    device_id: -1                  # use substring match (stable across reboots)
+                                   # set to >= 0 for deterministic PortAudio index override
+    target_sample_rate: 16000      # output rate for STT (Hz)
+    chunk_duration_ms: 100         # publish interval (ms)
+    mix_strategy: "mean"           # "mean" | "max_energy_channel" | "channel:N"
+    buffer_warn_threshold: 0.8     # warn when ring buffer fill exceeds this
+    gain_db: 0.0                   # Anker PowerConf has built-in AGC (no external gain needed)
+    enable_wav_dump: false          # write raw capture to /tmp/spot_audio_debug.wav
+    stall_timeout_s: 5.0           # no callback for this long -> shut down for respawn
+    jitter_warn_threshold_ms: 50.0 # log warning when callback timing jitter exceeds this (ms)
+
+stt_node:
+  ros__parameters:
+    # Whisper
+    model_path: "base"                                # model name ("base", "small", etc.) or absolute path to snapshot dir
+    model_cache_dir: "/opt/spot_audio_models/whisper-base"  # HuggingFace cache dir for model downloads
+    language: "en"                  # force language (empty = auto-detect)
+    device: "cpu"                   # "cpu" or "cuda" (cuda requires CUDA-enabled ctranslate2)
+    compute_type: "int8"            # int8 on CPU, float16 on GPU
+
+    # VAD (Silero TorchScript)
+    vad_model_path: "/opt/spot_audio_models/silero_vad.jit"
+    vad_threshold: 0.5
+    vad_frame_size: 512             # samples per VAD frame (512 = 32ms at 16kHz)
+    min_speech_duration_ms: 250     # min voiced duration to trigger speech
+    end_silence_ms: 400             # silence to close utterance (dominates latency)
+    max_speech_duration_s: 30.0     # force transcribe after this long
+    pre_speech_ms: 200              # pre-roll padding (captures clipped initial phonemes)
+    post_speech_ms: 150             # post-roll padding
+
+    # Echo gating
+    tts_cooldown_ms: 500            # ignore audio after TTS ends
+    tts_timeout_s: 10.0             # assume gating disabled if no /tts_active msg for this long
+
+    # Queue policy
+    max_pending_utterances: 2       # transcription queue depth; drop oldest if exceeded
+
+    # Observability
+    stale_threshold_ms: 5000.0      # capture age above this at epoch start -> suppress e2e metric
+    log_transcripts_at_info: true   # true = log transcript text at INFO; false = DEBUG
+    jitter_warn_threshold_ms: 50.0  # log warning when callback timing jitter exceeds this (ms)

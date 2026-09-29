@@ -1,0 +1,160 @@
+dog_mode_gaze_controller:
+  ros__parameters:
+    # Topics / frames
+    people_topic: "/people_detections"
+    body_pose_topic: "body_pose"
+    feedback_topic: "/status/feedback"
+    joy_topic: "/joy"
+    body_frame: "body"
+
+    # Behavior tuning
+    command_rate: 20.0
+    attention_radius: 4.0        # m: planar distance for entering attention
+    attention_release_radius: 6.0 # m: keep following the current person out to here
+    target_switch_margin: 0.30   # m: sustained advantage required to switch
+    target_switch_debounce: 0.20 # s: advantage must persist this long
+    target_switch_immediate_margin: 0.75  # m: switch immediately above this advantage
+    target_match_radius: 0.80    # m: spatial re-association when detector ids are unstable
+    target_lost_timeout: 1.0     # s: predict/hold through occlusion, then relax
+    detection_timeout: 0.75      # s: max receive gap or stamped detection age
+    data_fault_grace: 0.4        # s: hold the aim through a missing TF or late array
+    greet_repeat_timeout: 8.0    # s: a person returning sooner resumes track, no re-greet
+
+    # Transform and latency compensation
+    tf_lookup_timeout: 0.03      # s: bounded wait for detection-stamped TF
+    allow_latest_tf_fallback: true  # use latest TF with a warning if stamped TF is absent
+    prediction_horizon: 0.15     # s: nominal velocity look-ahead
+    max_prediction_horizon: 0.35 # s: total look-ahead including message age
+    max_prediction_speed: 3.0    # m/s: reject implausible velocity for prediction
+    min_prediction_speed: 0.35   # m/s: shrink tracker velocity noise so a standing
+                                 #      person is not chased around by the look-ahead
+
+    # Gaze motion
+    greet_ramp: 0.35             # s: ramp the extra greeting look-up in, and back out
+    greet_hold: 0.65             # s: greeting duration between the two ramps
+    greet_pitch_boost: 0.10      # rad: extra look-up during greeting
+    smoothing_tau: 0.30          # s: time-correct yaw low-pass constant
+    pitch_smoothing_tau: 0.35    # s: pitch low-pass; head height is the noisier axis
+    head_height_tau: 1.0         # s: smooth the target's head height, not the pitch
+                                 #    angle, so detector box noise stops bobbing the
+                                 #    body while approach still re-aims immediately
+    max_rate_rad_s: 0.80         # rad/s: hard slew limit for both axes
+
+    # Body-frame feedback compensation
+    # body_pose is commanded relative to the footprint, but detections are
+    # measured in the `body` frame, which moves with that command. Without
+    # compensation the controller chases its own output and the gaze oscillates.
+    body_feedback_compensation: true
+    body_response_tau: 0.30      # s: first-order model of how fast Spot reaches a
+                                 #    commanded body offset
+    relax_duration: 1.0          # s: ease back to neutral
+    max_yaw: 0.4                 # rad (matches spot_joy MAX_YAW)
+    max_pitch: 0.4               # rad (matches spot_joy MAX_PITCH)
+    pitch_sign: -1.0             # flip to 1.0 if the robot bows instead of looking up
+    default_person_height: 1.7   # m: fallback head height
+    min_person_height: 0.5       # m: cluster height below this uses the fallback
+    max_person_height: 2.5       # m: larger/non-finite heights use the fallback
+    body_height_above_ground: 0.52  # m: Spot body height when standing
+
+    # Body-pose delivery
+    # The driver only latches body_pose into its mobility params, so Spot adopts
+    # a new pose on the next stand command. Streaming stands keeps the gaze live.
+    stand_refresh: true
+    stand_service: "stand"       # Trigger service that restands with current mobility params
+    stand_refresh_rate: 10.0     # Hz: stand requests while gaze is active
+    stand_request_timeout: 1.0   # s: abandon a stand request that never returns
+    standing_grace: 2.0          # s: ignore standing=false while a stand settles;
+                                 #    keep above stand_request_timeout + refresh period
+
+    # Full-circle tracking
+    # Detections come from a 360-degree lidar, so a person to the side or behind
+    # is already tracked; only the body-pose envelope (max_yaw) is too small to
+    # aim at them. Beyond it the base turns instead. Velocity and body pose
+    # still cannot be commanded together — the driver applies a pose on the next
+    # stand, which cancels the motion — but rotation and (opt-in) walking now
+    # blend into one continuous base engagement instead of alternating through
+    # full stops.
+    base_turn_enabled: true
+    turn_cmd_topic: "cmd_vel_intermediate"  # relayed to cmd_vel by spot_joy
+    # Turn once the pose has saturated. Every in-place turn runs between
+    # turn_min_rate and turn_max_rate: Spot walks a slow in-place yaw as
+    # discrete steps, so a proportional tail trailing off toward zero is felt
+    # as stuttering rather than as a rotation coming smoothly to rest.
+    turn_enter_yaw: 0.60         # rad: start turning past this bearing
+    turn_exit_yaw: 0.15          # rad: release here; the gap prevents start/stop
+                                 #      chatter. Must sit below recenter_yaw so a
+                                 #      recentring turn has room to run, and deep
+                                 #      enough that the body ends nearly square to
+                                 #      the person; the decay tail past release is
+                                 #      small because the rate is near the floor
+                                 #      when the threshold is crossed.
+    turn_enter_debounce: 0.30    # s: ignore someone crossing behind briefly
+    recenter_yaw: 0.25           # rad: slow-path turn entry; a gaze offset held
+                                 #      past this eventually squares the body up
+                                 #      under it (0 disables)
+    recenter_debounce: 1.5       # s: offset must persist this long, so someone
+                                 #      merely passing through never triggers it
+    turn_rate_gain: 1.2          # rad/s per rad of bearing error
+    turn_max_rate: 0.80          # rad/s: in-place yaw ceiling
+    turn_min_rate: 0.35          # rad/s: floor below which the turn steps instead
+                                 #        of rotating; also covers the whole tail
+    turn_accel_limit: 1.5        # rad/s^2: ramp in and out of the turn
+    turn_response_tau: 0.25      # s: first-order model of how fast Spot reaches a
+                                 #    commanded yaw rate. Integrating it gives the
+                                 #    rotation already made since a detection was
+                                 #    captured, which is subtracted from that
+                                 #    detection's bearing. Without it the servo
+                                 #    closes on an angle the base has turned past
+                                 #    and overshoots by about the turn rate times
+                                 #    the detection latency.
+    turn_settle_time: 0.5        # s: upper bound on the post-motion settle; the
+                                 #    pose resumes as soon as the driver's moving
+                                 #    flag and the modelled base velocity agree
+                                 #    the base is at rest
+    turn_stall_timeout: 4.0      # s: abort a turn that stops closing on the target
+    turn_progress_epsilon: 0.05  # rad: bearing improvement that counts as progress
+    turn_moving_grace: 1.0       # s: window in which feedback.moving is attributed
+                                 #    to this controller's own turn rather than a fault
+    # Person approach (opt-in)
+    # Walks Spot toward the tracked person and stops at approach_distance,
+    # measured as the planar distance from the body-frame origin to the
+    # person's tracked position. Disabled by default because it commands
+    # autonomous translation rather than posture alone; enable it only with an
+    # operator holding the deadman. Approach shares the base-velocity path and
+    # every safety gate with base turning, and it never walks on predicted or
+    # stale data: a missing detection zeroes forward speed immediately.
+    approach_enabled: false
+    approach_distance: 1.0       # m: desired body-to-person planar distance
+    approach_resume_margin: 0.5 # m: restart the walk only beyond
+                                 #    distance + margin, so arriving and small
+                                 #    detection jitter cannot chatter across
+                                 #    the stopping threshold
+    approach_max_speed: 0.50     # m/s: matches normal full-stick joy teleop
+                                 #    (spot_joy MAX_LINEAR_VEL * SLOW_SPEED_SCALE)
+    approach_speed_gain: 1.2     # m/s per metre of range error; high enough to
+                                 #    saturate at max_speed for any walk longer
+                                 #    than ~0.4 m, so the cruise matches teleop
+                                 #    instead of creeping proportionally
+    approach_accel_limit: 0.50   # m/s^2: reaches teleop speed in ~1 s and also
+                                 #    bounds the braking-distance speed limit,
+                                 #    so deceleration starts ~0.25 m out and
+                                 #    the stop stays a glide, not a brake-slam
+    approach_alignment_yaw: 0.5  # rad: forward speed scales continuously with
+                                 #    alignment (raised cosine): full speed
+                                 #    straight ahead, half speed at this bearing,
+                                 #    zero beyond twice it — an arc that tightens
+                                 #    as steering closes, not a walk/steer gate
+
+    # The sticks and this controller both command cmd_vel, so one has to yield.
+    # Watching the sticks rather than feedback.moving yields on the first
+    # deflection, before either command has a chance to fight the other.
+    drive_axes: [0, 1, 2]        # spot_joy velocity axes: left stick x/y, right stick x
+    drive_axis_deadzone: 0.08    # deflection past which the operator owns the base;
+                                 # matches spot_joy's own stick deadzone
+    operator_drive_grace: 0.75   # s: keep yielding this long after the sticks centre
+
+    # Integration
+    start_enabled: false
+    deadman_button: 4            # L1 (spot_joy BTN_DEADMAN_MANUAL); gaze tracks only while held
+    publish_eye_gaze: false
+    eye_gaze_topic: "eye_animation/gaze"

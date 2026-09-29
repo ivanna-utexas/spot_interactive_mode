@@ -1,0 +1,42 @@
+centerpoint_people_node:
+  ros__parameters:
+    points_topic: /velodyne_points
+    people_topic: /people_detections
+    map_topic: /people/map_tracks
+    nearby_topic: /nearby_people
+    marker_topic: /people_detections_markers
+    diagnostics_topic: /centerpoint_people/diagnostics
+
+    tracking_frame: odom
+    map_frame: map
+    base_frame: base_link
+
+    # The launch file derives these from the active workspace. They may be
+    # overridden explicitly for deployments with external model storage.
+    model_plan_path: ""
+    scn_onnx_path: ""
+    require_versioned_engine: true
+
+    # Ten VLP-16 sweeps approximate the temporal density used by nuScenes.
+    sweep_count: 10
+    reset_gap_sec: 1.0
+    z_offset: 0.0
+    intensity_scale: 1.0
+
+    # Detection/tracker score hysteresis.
+    score_threshold: 0.5
+    maintain_score_threshold: 0.3
+    association_gate_m: 1.5
+    mahalanobis_gate: 9.21
+    association_velocity_weight: 0.5
+    position_measurement_noise: 0.25
+    velocity_measurement_noise: 2.0
+    position_process_noise: 1.0
+    velocity_process_noise: 2.0
+    confirm_hits: 3
+    max_coast_frames: 6
+
+    max_obstacles: 16
+    tf_timeout_sec: 0.05
+    publish_markers: true
+    verbose: false

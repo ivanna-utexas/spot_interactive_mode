@@ -1,0 +1,29 @@
+face_gaze:
+  ros__parameters:
+    image_topic: "rgb/image_raw"
+    gaze_topic: "eye_animation/gaze"
+    detection_hz: 10.0
+    cascade_path: ""
+    min_face_size: 30
+    scale_factor: 1.1
+    min_neighbors: 3
+    invert_x: false
+    invert_y: false
+    gaze_scale_x: 1.5
+    gaze_scale_y: 1.5
+    gaze_offset_x: 0.0
+    gaze_offset_y: 0.0
+
+eye_display:
+  ros__parameters:
+    display: ":0"
+    display_index: 0
+    width: 0
+    height: 0
+    target_fps: 30
+    smoothing_tau: 0.25
+    idle_timeout: 8.0
+    sleepy_timeout: 30.0
+    gaze_stale_timeout: 1.0
+    gaze_topic: "eye_animation/gaze"
+    eye_color: "#F0F0F5"
