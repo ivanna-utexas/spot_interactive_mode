@@ -9,6 +9,14 @@ interactive_mode:
     deadman_button: 5
     joy_timeout: 0.5
 
+    # PS4 mode switching (joy_linux layout, see joy_bindings.py), all operator
+    # level. 'button<N>', 'axis<N>+' or 'axis<N>-'; "" leaves a mode unbound.
+    # Teleop already uses Options, Square, Cross, Triangle, L1, R1, L2, D-pad up/down.
+    joy_stay: "axis6+"             # D-pad left
+    joy_follow: "axis6-"           # D-pad right
+    joy_dance: "button2"           # Circle (R1 must be held)
+    joy_idle: "button8"            # Share: interactive mode off
+
     # Switching
     min_command_confidence: 0.6    # voice commands below this are ignored
     switch_cooldown: 2.0           # s between accepted voice switches
@@ -17,7 +25,7 @@ interactive_mode:
     dance_settle_time: 0.75        # s the base must be still before dancing
     post_dance_mode: "stay"        # where a finished or cut-short dance lands
     require_standing: true
-    not_standing_grace: 2.5        # s; above dog mode's standing_grace (2.0)
+    not_standing_grace: 2.5        # s without a confirmed stand (a dance counts); above dog mode's standing_grace (2.0)
     start_mode: "idle"
 
     # Dog mode (STAY / FOLLOW)

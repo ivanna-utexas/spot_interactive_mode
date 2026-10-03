@@ -8,7 +8,7 @@ Spot can:
 - **follow**: turn toward a person and walk after them, stopping about 1 m away,
 - **dance**: play the 44 s Dancing Queen routine with music.
 
-Modes are switched from a terminal today. Voice switching (Milestones 2–3)
+Modes are switched from the PS4 controller or a terminal. Voice switching (Milestones 2–3)
 uses the same interface.
 
 UT Austin AMRL. Following and gaze come from the companion "dog mode"
@@ -22,7 +22,8 @@ them safely.
 
 | Piece | State |
 | --- | --- |
-| State machine, dance runner, unit tests (25) | Done, passing |
+| State machine, dance runner, unit tests (34) | Done, passing |
+| PS4 mode buttons + tmuxinator session (`tmux/interactive_mode/`) | Passing in simulation (fake `/joy`); not yet tried on the real pad |
 | End-to-end run against a simulated robot and dog mode | Passing |
 | Build of everything the demo needs | Passing (use the build command below, **not** plain `colcon build`) |
 | On the real robot | **Not yet verified**. Blocked by the two issues below. |
@@ -92,6 +93,48 @@ After changing only this repo's Python code, a quick rebuild is enough:
 
 ## Every session
 
+### Quick start: one tmux session (tmuxinator)
+
+```bash
+cd ~/spot_interactive_mode/tmux/interactive_mode && tmuxinator local
+```
+
+Host or container: from the host, every pane hops into the container
+itself. This opens every pane below (driver, Velodyne, people tracking,
+teleop, interactive mode + dog mode, mode keys) in one tmux session,
+`interactive_mode`, with each pane's name in its border. It also starts a
+VNC desktop on `:9` (connect to the Orin on port 5909; the first run in a
+fresh container asks for a VNC password in the vnc pane) with rviz showing
+the LiDAR points and CenterPoint people markers (`rviz2/interactive_mode.rviz`,
+copied from companion mode's `auto_dog_mode.rviz`). The same view runs full
+screen on the display mounted on Spot (X display `:0`, 1024×600) from
+`rviz2/mounted_display.rviz`, alongside the eye animation; press `v` in the
+keyboard pane to flip that screen between the eyes and tracking. rviz has no
+full-screen flag, so `x_fullscreen` (in `screen_windows.py`) presses its F11.
+Dog mode and the
+dance are both loaded, so switching between them is just a controller button
+(see Controls), with nothing to rebuild or relaunch. Running it again while
+the session exists just reattaches.
+
+Options go in front as environment variables: `CALIBRATION=1` (dance = 3 s
+sync bounce), `NO_LIDAR=1` (dance-only test), `AUDIO_LEAD_SEC=<s>`,
+`JOY_DEV=<path>`, `FORCE=1`. Before starting, it checks
+(`scripts/interactive_mode_stack.sh preflight`) and refuses to start if the
+`spot_interactive_mode` install is older than the source, or if a driver,
+teleop or dog mode is already running.
+
+To stop, run this where you started it. It presses Ctrl-C in interactive mode
+first (so dog mode is turned off cleanly), then in every other pane, then
+closes the session:
+
+```bash
+~/spot_interactive_mode/scripts/interactive_mode_stack.sh stop
+```
+
+(`tmuxinator stop` doesn't find projects started with `tmuxinator local`.)
+
+To start the panes by hand instead, follow the next two sections.
+
 ### Get into the container first
 
 ROS exists only inside the container. If `source install/setup.bash` prints
@@ -147,6 +190,10 @@ ros2 topic echo /interactive_mode/state    # hold R1 -> deadman_held: true (fals
 | Cross | Sit. Interactive mode turns itself off (idle) after about 2.5 s. |
 | **R1 (hold)** | **Allows all autonomous motion.** Hold it the whole time Spot is in stay, follow or dance. |
 | L1 + sticks | Drive by hand; following yields to you |
+| **D-pad left** | Mode: **stay** (dog mode, feet planted) |
+| **D-pad right** | Mode: **follow** (dog mode, walks after you) |
+| **Circle** | Mode: **dance**. Hold R1 first; ignored without it. |
+| **Share** | Mode: **idle** (interactive mode off) |
 | E-stop | Always within reach of the operator |
 
 What letting go of R1 does depends on the mode:
@@ -154,9 +201,13 @@ What letting go of R1 does depends on the mode:
 | Mode | Release R1 | Hold R1 again |
 | --- | --- | --- |
 | stay / follow | Spot stops moving and relaxes to neutral, but stays in that mode | Resumes on its own |
-| dance | The dance ends (music stops, body eases to neutral), then Spot goes to stay | Doesn't restart; press `d` again |
+| dance | The dance ends (music stops, body eases to neutral), then Spot goes to stay | Doesn't restart; press Circle (or `d`) again |
 
-The controller does **not** switch modes. That happens from a terminal.
+Mode buttons act once per press and count as the operator (no cooldown,
+can turn interactive mode on and off). They are set in
+`config/interactive_mode.yaml` (`joy_stay`, `joy_follow`, `joy_dance`,
+`joy_idle`). A rejected press (for example Circle without R1, or Spot not
+standing) is explained in the interactive-mode pane.
 
 ### Without the controller
 
@@ -183,10 +234,11 @@ there's no terminal stand-in for the deadman.
 
 ### Switching modes from a terminal
 
-All three methods go to the same node.
+All three methods go to the same node as the controller buttons.
 
 ```bash
 # 1. Keyboard (pane 6): s = stay, f = follow, d = dance, i = idle, q = quit
+#    v flips the Spot-mounted screen between the eyes and pedestrian tracking
 ros2 run spot_interactive_mode mode_keyboard
 
 # 2. Service call, good for scripts
@@ -211,8 +263,8 @@ Ignored and rejected requests say why, both in the keyboard pane and in
 1. Panes 1, 4, 5 and 6 running (2 and 3 optional).
 2. Controller: **Options**, then **Square**. Wait until Spot is standing.
 3. **Hold R1** and keep holding it.
-4. Press `s` (optional check that everything is connected; Spot should look at you).
-5. Press `d`. Spot stops following or staying, waits until it has been still
+4. D-pad left or `s` (optional check that everything is connected; Spot should look at you).
+5. Circle or `d`. Spot stops following or staying, waits until it has been still
    for 0.75 s, then starts the music and the routine. At the end it goes back to stay.
 6. To stop early, release R1 or press `s`.
 
@@ -294,7 +346,11 @@ ros2 param set /interactive_mode follow_allow_turn false
 ```
 config/            container network/mount config (mounts, ports, cyclonedds*.xml, name)
 docker/            Dockerfile + bash profiles
-scripts/           checkout.sh (clones externals), engine generation, setup helpers
+scripts/           checkout.sh (clones externals), engine generation, setup helpers,
+                   interactive_mode_stack.sh (preflight / stop for the tmux session)
+tmux/              tmuxinator projects: interactive_mode/ (the whole demo stack)
+rviz2/             interactive_mode.rviz (LiDAR + CenterPoint people, odom frame),
+                   mounted_display.rviz (same, sized for Spot's 1024x600 screen)
 params/            spot_driver.yaml          (local only, gitignored: Spot login)
 media/             DancingQueenDemoClip.wav  (local only, gitignored)
 src/
@@ -318,6 +374,8 @@ Inside `src/spot_interactive_mode/spot_interactive_mode/`:
 | `dance_moves.py` | Move library, unchanged from the summer `spot_joy` code |
 | `interactive_mode_node.py` | The ROS node: turns dog mode and the dance runner on and off to match the state machine |
 | `mode_keyboard.py` | Keypress mode switching |
+| `joy_bindings.py` | PS4 mode buttons (which input requests which mode, once per press) |
+| `screen_windows.py` | Spot-mounted screen: rviz full screen, `v` flips eyes / tracking (X11 via ctypes) |
 
 Launch files: `interactive_mode.launch.py` (dog mode + interactive node) and
 `teleop.launch.py` (PS4 controller driver + `spot_joy` teleop).
@@ -363,5 +421,5 @@ Run in this order and don't advance until each step passes. Rope off a
 - M2 (Oct 1–8): command recognition (keyword spotting vs. LLM). Publish
   `ModeCommand` on `/interactive_mode/command` with a real confidence; the
   state machine already handles the rest.
-- Optional: mode switching from free PS4 buttons (Share / L3 / R3) for the
-  live demo; a tmuxinator file that opens every pane above.
+- Check the PS4 mode buttons on the real pad (D-pad left/right direction in
+  particular; the interactive-mode pane logs every press).

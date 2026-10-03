@@ -38,6 +38,7 @@
 #include "centerpoint.h"
 #include "common.h"
 #include "postprocess.h"
+#include "people_detector/detection_filter.hpp"
 #include "people_detector/sweep_accumulator.hpp"
 #include "people_detector/tracker.hpp"
 #include "people_detector/transform_utils.hpp"
@@ -198,15 +199,23 @@ private:
       declare_parameter<double>("velocity_process_noise", 2.0);
     tracker_params_.confirm_hits = declare_parameter<int>("confirm_hits", 3);
     tracker_params_.max_coast_frames = declare_parameter<int>("max_coast_frames", 6);
+    tracker_params_.tentative_max_misses =
+      declare_parameter<int>("tentative_max_misses", 0);
     tracker_params_.max_gap_sec = reset_gap_sec_;
     tracker_params_.spawn_score_threshold = score_threshold_;
     tracker_params_.maintain_score_threshold = maintain_score_threshold_;
+
+    filter_params_.min_height_m = declare_parameter<double>("min_height_m", 1.0);
+    filter_params_.max_height_m = declare_parameter<double>("max_height_m", 2.2);
+    filter_params_.max_footprint_m = declare_parameter<double>("max_footprint_m", 1.2);
+    filter_params_.max_range_m = declare_parameter<double>("max_range_m", 10.0);
 
     pd::validatePipelineParameters({
       tracking_frame_, map_frame_, base_frame_, sweep_count_, max_obstacles_,
       tracker_params_.confirm_hits, tracker_params_.max_coast_frames,
       score_threshold_, maintain_score_threshold_, reset_gap_sec_,
-      intensity_scale_, tf_timeout_sec_});
+      intensity_scale_, tf_timeout_sec_, tracker_params_.tentative_max_misses});
+    pd::validateDetectionFilterParams(filter_params_);
   }
 
   void validateRuntimeAssets()
@@ -248,6 +257,7 @@ private:
     // so it is not suitable for measuring how long this callback takes.
     const auto callback_start = std::chrono::steady_clock::now();
     ++frames_received_;
+    implausible_detections_ = 0;
 
     // Convert the ROS (seconds, nanoseconds) stamp to one floating-point value.
     // last_dt_sec_ is metadata published with map tracks. A non-positive jump or
@@ -373,6 +383,7 @@ private:
     // planar velocity, yaw, semantic class ID, and confidence. Its class ID says
     // "pedestrian"; it is not the persistent person ID assigned by the tracker.
     std::vector<pd::Detection> detections;
+    std::size_t implausible = 0;
     for (const Bndbox & box : centerpoint_->nms_pred_) {
       // The lower "maintain" threshold admits weaker evidence that may preserve
       // an existing track. KalmanTracker applies the higher score_threshold_
@@ -381,6 +392,14 @@ private:
       if (box.id != Params::pedestrian_class_id ||
         box.score < maintain_score_threshold_)
       {
+        continue;
+      }
+
+      // Reject boxes no person could produce (furniture is the usual source)
+      // before they can spawn or hijack a track. Range is measured from the
+      // sensor, where the box center is still expressed.
+      if (!pd::isPlausiblePerson(filter_params_, box.x, box.y, box.l, box.w, box.h)) {
+        ++implausible;
         continue;
       }
 
@@ -403,6 +422,7 @@ private:
         box.l, box.w, box.h, box.rt + planarYaw(tracking_from_sensor), box.score});
     }
     detections_count_ = detections.size();
+    implausible_detections_ = implausible;
 
     // ---- Temporal association and filtering -------------------------------
     //
@@ -745,6 +765,8 @@ private:
     addDiagnostic(status, "input_points", std::to_string(input_points_));
     addDiagnostic(status, "packed_points", std::to_string(host_points_.size() / 5));
     addDiagnostic(status, "detections", std::to_string(detections));
+    addDiagnostic(
+      status, "implausible_detections", std::to_string(implausible_detections_));
     addDiagnostic(status, "confirmed_tracks", std::to_string(tracks));
     addDiagnostic(status, "inference_ms", std::to_string(inference_ms));
     addDiagnostic(status, "callback_ms", std::to_string(callback_ms));
@@ -817,6 +839,7 @@ private:
   int sweep_count_{10};
   int max_obstacles_{16};
   pd::TrackerParams tracker_params_;
+  pd::DetectionFilterParams filter_params_;
   Params params_;
 
   std::unique_ptr<pd::SweepAccumulator> accumulator_;
@@ -839,6 +862,7 @@ private:
   std::size_t frames_received_{0};
   std::size_t input_points_{0};
   std::size_t detections_count_{0};
+  std::size_t implausible_detections_{0};
   std::size_t missing_tf_frames_{0};
   std::size_t dropped_frames_{0};
   std::size_t reset_frames_{0};

@@ -46,7 +46,7 @@ Fallbacks:
 | Base won't settle before a dance | dance skipped, back to STAY |
 | Dog mode doesn't enable in time | IDLE |
 | Dog mode disabled by someone else (e.g. Circle on the companion teleop) | IDLE (operator takes over) |
-| Robot not standing for `not_standing_grace` | IDLE |
+| Robot sits, or no confirmed stand for `not_standing_grace` (masked while the dance runs: its stand stream holds the driver at `standing=false`) | IDLE |
 
 When a dance ends (finished or aborted), a pose segment ramps to neutral, then
 a neutral pose and one stand are sent, and the gait is reset to
@@ -74,6 +74,7 @@ ros2 launch spot_interactive_mode interactive_mode.launch.py \
     audio_lead_sec:=<calibrated value>
 
 # switch modes (operator)
+# PS4: D-pad left = stay, D-pad right = follow, Circle = dance (hold R1), Share = idle
 ros2 run spot_interactive_mode mode_keyboard          # s / f / d / i
 ros2 service call /interactive_mode/set_mode interactive_mode_msgs/srv/SetMode "{mode: follow}"
 
@@ -97,6 +98,7 @@ the same as `dance_sequence.py`.
 | `dance_moves.py` | no | copied unchanged from `spot_joy` |
 | `interactive_mode_node.py` | yes | reconciles dog mode and the runner to the machine's directive |
 | `mode_keyboard.py` | yes | keypress triggers |
+| `joy_bindings.py` | no | PS4 mode buttons: parse `joy_*` params, fire once per press |
 
 `python3 -m pytest test` runs without ROS.
 

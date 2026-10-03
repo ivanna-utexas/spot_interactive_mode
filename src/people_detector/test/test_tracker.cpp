@@ -121,3 +121,70 @@ TEST(Tracker, BackwardAndLargeTimestampGapsReset)
   EXPECT_NE(tracks.front().id, second_id);
   EXPECT_EQ(tracker.resetCount(), 2U);
 }
+
+TEST(Tracker, TentativeTrackDroppedOnFirstMiss)
+{
+  TrackerParams params;
+  params.confirm_hits = 3;
+  params.max_coast_frames = 10;
+  params.association_gate_m = 2.0;
+  KalmanTracker tracker(params);
+
+  // A flickering object never accumulates consecutive hits.
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0)}, 0.0).empty());
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0)}, 0.1).empty());
+  EXPECT_TRUE(tracker.update({}, 0.2).empty());
+  EXPECT_TRUE(tracker.allTracks().empty());
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0)}, 0.3).empty());
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0)}, 0.4).empty());
+  EXPECT_EQ(tracker.update({person(0.0, 0.0)}, 0.5).size(), 1U);
+}
+
+TEST(Tracker, TentativeMissAllowanceIsConfigurable)
+{
+  TrackerParams params;
+  params.confirm_hits = 2;
+  params.tentative_max_misses = 1;
+  params.association_gate_m = 2.0;
+  KalmanTracker tracker(params);
+
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0)}, 0.0).empty());
+  EXPECT_TRUE(tracker.update({}, 0.1).empty());
+  EXPECT_EQ(tracker.update({person(0.0, 0.0)}, 0.2).size(), 1U);
+}
+
+TEST(Tracker, WeakDetectionsCannotConfirmTentativeTrack)
+{
+  TrackerParams params;
+  params.confirm_hits = 3;
+  params.spawn_score_threshold = 0.5;
+  params.maintain_score_threshold = 0.3;
+  params.association_gate_m = 2.0;
+  KalmanTracker tracker(params);
+
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0, 0.0, 0.6)}, 0.0).empty());
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0, 0.0, 0.4)}, 0.1).empty());
+  EXPECT_TRUE(tracker.update({person(0.0, 0.0, 0.0, 0.4)}, 0.2).empty());
+  EXPECT_TRUE(tracker.allTracks().empty());
+}
+
+TEST(Tracker, ConfirmedTrackCoastsThroughOcclusionAndKeepsId)
+{
+  TrackerParams params;
+  params.confirm_hits = 2;
+  params.max_coast_frames = 5;
+  params.association_gate_m = 2.0;
+  KalmanTracker tracker(params);
+
+  tracker.update({person(0.0, 0.0)}, 0.0);
+  auto tracks = tracker.update({person(0.0, 0.0)}, 0.1);
+  ASSERT_EQ(tracks.size(), 1U);
+  const int id = tracks.front().id;
+  for (int step = 2; step <= 6; ++step) {
+    EXPECT_EQ(tracker.update({}, step * 0.1).size(), 1U);
+  }
+  // A weak detection is enough to reacquire an established person.
+  tracks = tracker.update({person(0.1, 0.0, 0.0, 0.35)}, 0.7);
+  ASSERT_EQ(tracks.size(), 1U);
+  EXPECT_EQ(tracks.front().id, id);
+}

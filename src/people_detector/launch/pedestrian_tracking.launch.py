@@ -66,7 +66,16 @@ def generate_launch_description():
             "Velocity-consistency weight used during association.",
         ),
         _argument("confirm_hits", "3", "Hits required before publication."),
-        _argument("max_coast_frames", "6", "Missed frames retained before expiration."),
+        _argument(
+            "max_coast_frames", "15", "Missed frames a confirmed track survives."
+        ),
+        _argument(
+            "tentative_max_misses", "0", "Missed frames an unconfirmed track survives."
+        ),
+        _argument("min_height_m", "1.0", "Minimum plausible person box height."),
+        _argument("max_height_m", "2.2", "Maximum plausible person box height."),
+        _argument("max_footprint_m", "1.2", "Maximum person box length/width."),
+        _argument("max_range_m", "10.0", "Maximum detection range (0 disables)."),
         _argument("max_obstacles", "16", "Nearest people retained in /nearby_people."),
         _argument("publish_markers", "true", "Publish box, velocity, and ID markers."),
         _argument("verbose", "false", "Enable verbose CenterPoint timing output."),
@@ -93,6 +102,11 @@ def generate_launch_description():
             "association_velocity_weight",
             "confirm_hits",
             "max_coast_frames",
+            "tentative_max_misses",
+            "min_height_m",
+            "max_height_m",
+            "max_footprint_m",
+            "max_range_m",
             "max_obstacles",
             "publish_markers",
             "verbose",

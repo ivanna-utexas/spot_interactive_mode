@@ -1,0 +1,73 @@
+# Interactive mode: dog mode (stay / follow) and the Dancing Queen dance in
+# one tmux session, switched live from the PS4 controller. Nothing is
+# rebuilt or relaunched to change mode.
+#
+#   cd ~/spot_interactive_mode/tmux/interactive_mode && tmuxinator local
+#
+# Works on the host (every pane hops into the container) or inside it.
+# Running it again while the session exists just reattaches.
+# Options, as environment variables in front of `tmuxinator local`:
+#   CALIBRATION=1        "dance" plays one 3 s sync bounce (for AUDIO_LEAD_SEC)
+#   NO_LIDAR=1           skip Velodyne + people tracking (dance-only test)
+#   AUDIO_LEAD_SEC=<s>   audio offset (default 0.0)
+#   JOY_DEV=<path>       PS4 pad (default /dev/input/ps4_primary)
+#   FORCE=1              start even if parts of the stack are already running
+#
+# Stop, from where you started it (interactive mode first, so it turns dog
+# mode off cleanly):
+#   ~/spot_interactive_mode/scripts/interactive_mode_stack.sh stop
+#
+# Controller (USB). R1 must be held for any autonomous motion:
+#   Options = claim + power on     Square = stand     Cross = sit
+#   D-pad left  = stay             D-pad right = follow
+#   Circle      = dance (hold R1)  Share       = idle (interactive mode off)
+<%
+  lidar = ENV["NO_LIDAR"] != "1"
+  audio = File.expand_path("~/spot_interactive_mode/media/DancingQueenDemoClip.wav")
+  audio_arg = File.exist?(audio) ? "audio_file:=$HOME/spot_interactive_mode/media/DancingQueenDemoClip.wav" : ""
+  calibration = ENV["CALIBRATION"] == "1" ? "true" : "false"
+  joy_dev = ENV["JOY_DEV"] || "/dev/input/ps4_primary"
+  # Each pane names itself (shown in the border; `stop` finds "mode" by it),
+  # then sources the workspace and runs through its shell, so after a Ctrl-C
+  # the pane stays open and Up + Enter relaunches just that piece.
+  run = ->(title, cmd) {
+    "printf '\\033]2;#{title}\\033\\\\'; source /opt/ros/humble/setup.bash && " \
+    "source $HOME/spot_interactive_mode/install/setup.bash && #{cmd}"
+  }
+%>
+name: interactive_mode
+root: ~/spot_interactive_mode
+
+on_project_first_start: scripts/interactive_mode_stack.sh preflight || exit 1
+pre_window: 'tmux set-option -w pane-border-status top; tmux set-option -w pane-border-format " #{pane_index}: #{pane_title} "; [ -n "$IN_CONTAINER_NAME" ] || ./container shell'
+startup_window: stack
+# Keyboard pane focused, so s / f / d / i work as a backup to the controller.
+startup_pane: 5
+
+windows:
+  - stack:
+      layout: tiled
+      panes:
+        - driver: <%= run.("driver", "SPOT_PACK=1 SPOT_LIDAR_MOUNT=1 SPOT_VELODYNE=1 ros2 launch spot_driver spot_driver.launch.py config_file:=$HOME/spot_interactive_mode/params/spot_driver.yaml") %>
+        - velodyne: <%= run.("velodyne", "ros2 launch spot_velodyne velodyne.launch.py device_ip:=192.168.50.201") %>
+        - tracking: <%= run.("tracking", "ros2 launch people_detector pedestrian_tracking.launch.py") %>
+        - teleop: <%= run.("teleop", "ros2 launch spot_interactive_mode teleop.launch.py joy_dev:=#{joy_dev}") %>
+        # Also starts dog mode, configured for interactive mode. Never run
+        # spot_dog_mode's own launch next to it.
+        - mode: <%= run.("mode", "ros2 launch spot_interactive_mode interactive_mode.launch.py #{audio_arg} audio_lead_sec:=#{ENV['AUDIO_LEAD_SEC'] || '0.0'} calibration_mode:=#{calibration}") %>
+        - keyboard: <%= run.("keyboard", "sleep 3 && ros2 run spot_interactive_mode mode_keyboard") %>
+        # VNC desktop :9 (port 5909). The first run in a fresh container asks
+        # for a VNC password here. Xvnc outlives `stop`; a restart reuses it.
+        - vnc: <%= run.("vnc", "vncserver -list | grep -q '^:9[[:space:]]' && echo 'VNC :9 already running' || vncserver :9") %>
+        # LiDAR points + CenterPoint people markers in odom. Waits for :9
+        # rather than a fixed sleep, since the password prompt can take a while.
+        - rviz: <%= run.("rviz", "echo 'waiting for VNC display :9...'; until xdpyinfo -display :9 >/dev/null 2>&1; do sleep 1; done; DISPLAY=:9 xfce4-screensaver-command --exit >/dev/null 2>&1; DISPLAY=:9 rviz2 -d $HOME/spot_interactive_mode/rviz2/interactive_mode.rviz") %>
+        # The screen mounted on Spot (X display :0, 1024x600) shows either the
+        # eyes or the same pedestrian-tracking view; `v` in the keyboard pane
+        # flips between them. Both stay running full screen, so it's instant.
+        # rviz has no full-screen flag, so x_fullscreen presses its F11.
+        - screen: <%= run.("screen", "until xdpyinfo -display :0 >/dev/null 2>&1; do sleep 2; done; (DISPLAY=:0 ros2 run spot_interactive_mode x_fullscreen mounted_display.rviz &); DISPLAY=:0 rviz2 -d $HOME/spot_interactive_mode/rviz2/mounted_display.rviz") %>
+        # Eye animation (eyes idle without the Kinect camera, which this stack
+        # doesn't start).
+        - eyes: <%= run.("eyes", "until xdpyinfo -display :0 >/dev/null 2>&1; do sleep 2; done; ros2 launch spot_eye_animation eye_animation.launch.py display:=:0") %>
+

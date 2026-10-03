@@ -29,6 +29,7 @@ deadlocks the single-threaded executor until it times out.
 Interfaces:
   srv  /interactive_mode/set_mode   interactive_mode_msgs/SetMode (operator)
   sub  /interactive_mode/command    interactive_mode_msgs/ModeCommand (voice etc.)
+  sub  /joy                         PS4 mode buttons (joy_stay, joy_follow, ...)
   pub  /interactive_mode/state      interactive_mode_msgs/ModeState (latched)
 """
 
@@ -57,6 +58,7 @@ from interactive_mode_msgs.srv import SetMode
 
 from .dance_runner import DanceRunner
 from .dance_timeline import DanceTimeline, rpy_to_quaternion
+from .joy_bindings import JoyModeBindings
 from .mode_machine import MachineConfig, Mode, ModeMachine, Observation
 
 LATCHED = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
@@ -73,6 +75,11 @@ class InteractiveModeNode(Node):
         p('joy_topic', '/joy')
         p('deadman_button', 5)            # R1: teleop's auto deadman
         p('joy_timeout', 0.5)             # joy_linux autorepeats at 50 Hz
+        # PS4 mode switching, see joy_bindings.py. '' leaves a mode unbound.
+        p('joy_stay', 'axis6+')           # D-pad left
+        p('joy_follow', 'axis6-')         # D-pad right
+        p('joy_dance', 'button2')         # Circle
+        p('joy_idle', 'button8')          # Share
         # Command filtering / transitions
         p('min_command_confidence', 0.6)
         p('switch_cooldown', 2.0)
@@ -136,11 +143,15 @@ class InteractiveModeNode(Node):
             self.get_logger().error(f'audio_file not found: {self.audio_file}; dancing silently')
             self.audio_file = ''
         self._audio_proc: Optional[subprocess.Popen] = None
+        self.joy_modes = JoyModeBindings(
+            {m: g(f'joy_{m}') for m in ('stay', 'follow', 'dance', 'idle')})
+        self._joy_requests = []
 
         # Observed robot / operator / controller state
         self._joy_time = 0.0
         self._deadman = False
         self._standing: Optional[bool] = None
+        self._sitting = False
         self._moving = False
         self._dog_enabled: Optional[bool] = None
         self._dance_finished = False
@@ -186,8 +197,8 @@ class InteractiveModeNode(Node):
             self._pending_start = None
 
         self.get_logger().info(
-            'Interactive mode ready (idle). Hold R1 for autonomy. '
-            'ros2 service call /interactive_mode/set_mode '
+            'Interactive mode ready (idle). Hold R1 for autonomy. Controller: '
+            f'{self.joy_modes.describe()}. Or: ros2 service call /interactive_mode/set_mode '
             'interactive_mode_msgs/srv/SetMode "{mode: stay}"')
 
     # ------------------------------------------------------------- callbacks
@@ -196,9 +207,13 @@ class InteractiveModeNode(Node):
         idx = int(self.get_parameter('deadman_button').value)
         self._deadman = 0 <= idx < len(msg.buttons) and bool(msg.buttons[idx])
         self._joy_time = time.monotonic()
+        # Applied in _tick, after the machine has seen this message's R1:
+        # R1 and Circle pressed together must count as a dance with R1 held.
+        self._joy_requests.extend(self.joy_modes.update(msg.buttons, msg.axes))
 
     def _on_feedback(self, msg: Feedback) -> None:
         self._standing = msg.standing
+        self._sitting = msg.sitting
         self._moving = msg.moving
 
     def _on_dog_enabled(self, msg: Bool) -> None:
@@ -249,6 +264,7 @@ class InteractiveModeNode(Node):
             now=now,
             deadman_held=self._deadman_held(now),
             standing=self._standing,
+            sitting=self._sitting,
             moving=self._moving,
             dog_enabled=self._dog_enabled,
             dance_active=self.runner.running,
@@ -257,6 +273,10 @@ class InteractiveModeNode(Node):
         self._dance_finished = False
         prev = (self.machine.mode, self.machine.target, self.machine.phase)
         directive = self.machine.step(obs)
+        for mode in self._joy_requests:
+            decision = self.machine.request(mode, now, source='controller')
+            self._log_decision(decision, f'controller {mode!r}')
+        self._joy_requests.clear()
         if (self.machine.mode, self.machine.target, self.machine.phase) != prev:
             self.get_logger().info(
                 f'[{self.machine.phase.value}] mode={self.machine.mode.value} '

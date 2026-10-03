@@ -59,7 +59,11 @@ struct TrackerParams
   double maintain_score_threshold{0.3};
   double max_gap_sec{1.0};
   int confirm_hits{3};
+  // Misses a confirmed track may coast through before it is dropped.
   int max_coast_frames{6};
+  // Misses a tentative (unconfirmed) track survives. Zero means confirmation
+  // requires confirm_hits consecutive frames.
+  int tentative_max_misses{0};
 };
 
 // Minimum-cost one-to-one assignment. Rows assigned to dummy columns are -1.
@@ -183,7 +187,12 @@ public:
       tracks_.size(), std::vector<double>(detections.size(), kForbidden));
     for (std::size_t t = 0; t < tracks_.size(); ++t) {
       for (std::size_t d = 0; d < detections.size(); ++d) {
-        if (detections[d].score < params_.maintain_score_threshold) {
+        // Weak evidence may sustain a confirmed track, but a tentative track
+        // must earn every hit at the spawn threshold. Otherwise a cluttered
+        // object scoring just above maintain_score_threshold confirms itself.
+        const double min_score = tracks_[t].confirmed ?
+          params_.maintain_score_threshold : params_.spawn_score_threshold;
+        if (detections[d].score < min_score) {
           continue;
         }
         const double dx = detections[d].x - tracks_[t].x;
@@ -224,7 +233,9 @@ public:
       } else {
         track.misses += 1;
       }
-      if (track.misses <= params_.max_coast_frames) {
+      const int max_misses = track.confirmed ?
+        params_.max_coast_frames : params_.tentative_max_misses;
+      if (track.misses <= max_misses) {
         survivors.push_back(track);
       }
     }

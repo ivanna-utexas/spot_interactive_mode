@@ -11,6 +11,7 @@ class World:
         self.m = machine
         self.t = 0.0
         self.standing = True
+        self.sitting = False
         self.deadman = True
         self.moving = False
         self.dog = False
@@ -35,6 +36,7 @@ class World:
             self.dance, finished = False, True
         d = self.m.step(Observation(
             now=self.t, deadman_held=self.deadman, standing=self.standing,
+            sitting=self.sitting,
             moving=self.moving, dog_enabled=self.dog, dance_active=self.dance,
             dance_finished=finished))
         # Only one controller may ever be asked to run.
@@ -172,6 +174,15 @@ def test_voice_filters():
     assert m.request('stay', w.t, source='keyboard').accepted, 'operator bypasses cooldown'
 
 
+def test_controller_buttons_are_operator():
+    m, w = make(switch_cooldown=2.0)
+    assert m.request('stay', w.t, source='controller').accepted, 'can enable from idle'
+    w.run(0.5)
+    assert m.request('dance', w.t, source='controller').accepted, 'no cooldown'
+    w.run(0.1)
+    assert m.request('idle', w.t, source='controller').accepted, 'can turn it off'
+
+
 def test_duplicate_and_unknown_rejected():
     m, w = make()
     assert not m.request('jump', w.t).accepted
@@ -193,9 +204,67 @@ def test_not_standing_drops_to_idle():
     assert (m.mode, m.phase) == (Mode.IDLE, Phase.ACTIVE) and not w.dog
 
 
+def test_dance_survives_standing_flag_held_false():
+    # The dance's stand stream keeps the driver at standing=false for whole
+    # pose segments, and through the locomotion segment after one.
+    m, w = make(not_standing_grace=2.5, post_dance_mode=Mode.STAY)
+    w.dance_len = 12.0
+    m.request('stay', w.t)
+    w.run(0.5)
+    m.request('dance', w.t)
+    w.run(1.5)
+    assert m.mode == Mode.DANCE
+    w.standing = False
+    w.run(9.0)
+    assert m.mode == Mode.DANCE and w.dance, m.reason
+    w.run(2.0)
+    assert m.reason == 'dance finished'
+    # The final stand settles a moment after the dance ends.
+    w.run(1.0)
+    w.standing = True
+    w.run(1.0)
+    assert (m.mode, m.phase) == (Mode.STAY, Phase.ACTIVE)
+
+
+def test_dance_still_stops_if_robot_never_stands_after():
+    m, w = make(not_standing_grace=1.0, post_dance_mode=Mode.STAY)
+    w.dance_len = 3.0
+    m.request('stay', w.t)
+    w.run(0.5)
+    m.request('dance', w.t)
+    w.run(1.0)
+    w.standing = False
+    w.run(5.0)
+    assert (m.mode, m.phase) == (Mode.IDLE, Phase.ACTIVE)
+    assert m.reason == 'robot no longer standing'
+
+
+def test_sitting_ends_dance_at_once():
+    m, w = make(not_standing_grace=2.5)
+    m.request('stay', w.t)
+    w.run(0.5)
+    m.request('dance', w.t)
+    w.run(1.5)
+    w.standing, w.sitting = False, True
+    w.tick()
+    assert m.target == Mode.IDLE and m.reason == 'robot sat down'
+
+
+def test_switch_tolerates_settling_stand():
+    m, w = make(not_standing_grace=2.5)
+    m.request('stay', w.t)
+    w.run(0.5)
+    w.standing = False          # dog mode's stand refresh still settling
+    w.run(0.5)
+    assert m.request('dance', w.t).accepted
+
+
 def test_cannot_enable_while_sitting():
     m, w = make()
     w.standing = False
+    w.tick()
+    assert not m.request('stay', w.t).accepted
+    w.sitting = True
     w.tick()
     assert not m.request('stay', w.t).accepted
 

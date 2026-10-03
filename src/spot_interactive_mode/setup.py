@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'interactive_mode_node = spot_interactive_mode.interactive_mode_node:main',
             'mode_keyboard = spot_interactive_mode.mode_keyboard:main',
+            'x_fullscreen = spot_interactive_mode.screen_windows:main',
         ],
     },
 )

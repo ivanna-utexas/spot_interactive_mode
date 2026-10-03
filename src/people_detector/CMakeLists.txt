@@ -139,6 +139,10 @@ if(BUILD_TESTING)
     test/test_validation_and_transforms.cpp)
   target_include_directories(test_validation_and_transforms PRIVATE include)
   target_compile_features(test_validation_and_transforms PUBLIC cxx_std_17)
+
+  ament_add_gtest(test_detection_filter test/test_detection_filter.cpp)
+  target_include_directories(test_detection_filter PRIVATE include)
+  target_compile_features(test_detection_filter PUBLIC cxx_std_17)
 endif()
 
 ament_export_dependencies(rosidl_default_runtime)

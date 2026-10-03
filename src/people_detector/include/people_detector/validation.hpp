@@ -21,6 +21,7 @@ struct PipelineParameters
   double reset_gap_sec{1.0};
   double intensity_scale{1.0};
   double tf_timeout_sec{0.05};
+  int tentative_max_misses{0};
 };
 
 inline void validatePipelineParameters(const PipelineParameters & parameters)
@@ -40,7 +41,8 @@ inline void validatePipelineParameters(const PipelineParameters & parameters)
             "thresholds must satisfy 0 <= maintain_score_threshold <= score_threshold");
   }
   if (parameters.max_obstacles < 0 || parameters.confirm_hits < 1 ||
-    parameters.max_coast_frames < 0 || parameters.reset_gap_sec <= 0.0 ||
+    parameters.max_coast_frames < 0 || parameters.tentative_max_misses < 0 ||
+    parameters.reset_gap_sec <= 0.0 ||
     parameters.intensity_scale < 0.0 || parameters.tf_timeout_sec < 0.0)
   {
     throw std::invalid_argument("invalid negative/zero CenterPoint tracker parameter");

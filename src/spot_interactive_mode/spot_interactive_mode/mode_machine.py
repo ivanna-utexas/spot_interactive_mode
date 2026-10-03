@@ -69,16 +69,17 @@ class MachineConfig:
     switch_cooldown: float = 2.0
     # Sources treated as the operator: full confidence, no cooldown, and the
     # only ones allowed to turn interactive mode on or off.
-    operator_sources: Tuple[str, ...] = ('operator', 'keyboard', 'service')
+    operator_sources: Tuple[str, ...] = ('operator', 'keyboard', 'service', 'controller')
     exit_timeout: float = 4.0
     enter_timeout: float = 3.0
     # The base must be still this long before a dance starts.
     dance_settle_time: float = 0.75
     # Where to go once a dance finishes (or is cut short by the deadman).
     post_dance_mode: Mode = Mode.STAY
-    # Robot must report standing to leave IDLE; losing standing for this long
-    # drops back to IDLE. Kept above dog mode's standing_grace, because
-    # feedback can flicker while a stand settles.
+    # Robot must report standing to leave IDLE; going this long without a
+    # confirmed stand drops back to IDLE, and sitting does so at once. The
+    # driver reports standing=false while any stand is still settling, so the
+    # flag flickers; kept above dog mode's standing_grace for that reason.
     require_standing: bool = True
     not_standing_grace: float = 2.5
 
@@ -88,6 +89,7 @@ class Observation:
     now: float
     deadman_held: bool = False
     standing: Optional[bool] = None        # None until /status/feedback arrives
+    sitting: bool = False                  # a sit has completed (never masked)
     moving: bool = False
     dog_enabled: Optional[bool] = None     # None until /dog_mode/enabled arrives
     dance_active: bool = False             # runner running, including its stop ramp
@@ -125,7 +127,7 @@ class ModeMachine:
         self._phase_since = 0.0
         self._last_switch = float('-inf')
         self._still_since: Optional[float] = None
-        self._not_standing_since: Optional[float] = None
+        self._standing_confirmed: Optional[float] = None
         self._last_obs: Optional[Observation] = None
         self._t = _Transition()
 
@@ -189,6 +191,7 @@ class ModeMachine:
     def step(self, obs: Observation) -> Directive:
         self._last_obs = obs
         self._track_motion(obs)
+        self._track_standing(obs)
         self._safety(obs)
 
         if self.phase == Phase.EXITING:
@@ -215,15 +218,11 @@ class ModeMachine:
     def _safety(self, obs: Observation) -> None:
         if self.mode == Mode.IDLE and self.target == Mode.IDLE:
             return
-        if self.config.require_standing:
-            if obs.standing is False:
-                if self._not_standing_since is None:
-                    self._not_standing_since = obs.now
-                elif obs.now - self._not_standing_since > self.config.not_standing_grace:
-                    self._begin(Mode.IDLE, obs.now, 'robot no longer standing')
-                    return
-            else:
-                self._not_standing_since = None
+        if (self.config.require_standing and self.target != Mode.IDLE
+                and obs.standing is not None and not self._upright(obs)):
+            self._begin(Mode.IDLE, obs.now,
+                        'robot sat down' if obs.sitting else 'robot no longer standing')
+            return
         # The deadman gates dog mode internally (it neutralizes and resumes on
         # its own), but a half-played dance can't be paused and picked back up
         # on the beat, so releasing the deadman ends it.
@@ -299,10 +298,33 @@ class ModeMachine:
         elif self._still_since is None:
             self._still_since = obs.now
 
+    def _track_standing(self, obs: Observation) -> None:
+        if obs.sitting:
+            self._standing_confirmed = None
+        elif obs.standing or obs.dance_active:
+            # A dance re-asserts a stand at every pose tick, so no stand ever
+            # finishes settling and the driver holds standing=false for whole
+            # pose segments (and through the locomotion segment after one,
+            # since a superseded stand never reports done). The runner
+            # commanding Spot is the confirmation; only a sit counts against it.
+            self._standing_confirmed = obs.now
+
+    def _upright(self, obs: Observation) -> bool:
+        return (not obs.sitting and self._standing_confirmed is not None
+                and obs.now - self._standing_confirmed <= self.config.not_standing_grace)
+
     def _robot_ready(self) -> bool:
         if not self.config.require_standing:
             return True
-        return self._last_obs is not None and self._last_obs.standing is True
+        obs = self._last_obs
+        if obs is None or obs.sitting:
+            return False
+        if obs.standing:
+            return True
+        # Switching between modes, a stand from the outgoing controller can
+        # still be settling. Leaving IDLE needs a fresh confirmation.
+        idle = self.mode == Mode.IDLE and self.target == Mode.IDLE
+        return not idle and self._upright(obs)
 
     def _deadman_held(self) -> bool:
         return self._last_obs is not None and self._last_obs.deadman_held
