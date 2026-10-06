@@ -1,0 +1,71 @@
+{
+  "song": "Sultans of Swing - Dire Straits (outro solo, 4:49-5:35 of the album version)",
+  "bpm": 148.5,
+  "clip_duration_sec": 46.256,
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.478,
+      "bars": "1-4",
+      "section": "solo_groove",
+      "move": "head_bob",
+      "type": "pose"
+    },
+    {
+      "start": 6.478,
+      "end": 12.957,
+      "bars": "5-8",
+      "section": "solo_groove",
+      "move": "swing_step",
+      "type": "cmd_vel",
+      "axis": "y",
+      "amplitude": 0.4,
+      "period": 1.620,
+      "locomotion_mode": 2
+    },
+    {
+      "start": 12.957,
+      "end": 19.458,
+      "bars": "9-12",
+      "section": "solo_build",
+      "move": "air_guitar",
+      "type": "pose"
+    },
+    {
+      "start": 19.458,
+      "end": 25.890,
+      "bars": "13-16",
+      "section": "solo_build",
+      "move": "sultan_sway",
+      "type": "pose"
+    },
+    {
+      "start": 25.890,
+      "end": 32.322,
+      "bars": "17-20",
+      "section": "arpeggios",
+      "move": "hop_shuffle",
+      "type": "cmd_vel",
+      "axis": "x",
+      "amplitude": 0.5,
+      "period": 0.804,
+      "locomotion_mode": 8
+    },
+    {
+      "start": 32.322,
+      "end": 40.380,
+      "bars": "21-25",
+      "section": "arpeggios",
+      "move": "arpeggio_ripple",
+      "type": "pose"
+    },
+    {
+      "start": 40.380,
+      "end": 46.256,
+      "bars": "26-28 + fade",
+      "section": "fade_out",
+      "move": "take_a_bow",
+      "type": "pose"
+    }
+  ]
+}

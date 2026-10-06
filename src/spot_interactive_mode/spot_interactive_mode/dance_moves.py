@@ -231,6 +231,97 @@ def twerk(t):
     pitch = LEAN_BIAS
     return (roll, pitch, yaw, height)
 
+
+# ------------------------------------------------------------------ #
+# Sultans of Swing routine moves (Dire Straits, outro solo, ~148.5 BPM).
+# Unlike the moves above these are locked to the song's beat and NOT scaled
+# by TEMPO: every segment in sultans_of_swing.json starts on a detected
+# downbeat, so a move whose period is a whole number of beats lands its
+# hits on the beat. Retune SOS_BEAT if the clip is ever re-cut.
+# Pitch sign: positive pitch = nose down (right-hand rule about +y).
+# ------------------------------------------------------------------ #
+
+SOS_BEAT = 60.0 / 148.5   # s per beat, measured from the clip (28 bars / 45.256 s)
+
+
+def _beat_cos(t, beats, phase=0.0):
+    """cos wave with a period of `beats` beats: +1 exactly on beat 1 (t=0)."""
+    return math.cos(2.0 * math.pi * t / (beats * SOS_BEAT) + phase)
+
+
+def _on_beat(t, beats=1.0, sharpness=0.6):
+    """A one-sided hit that peaks exactly on every `beats`-th beat and is 0
+    for the off half of the cycle. sharpness < 1 widens the hit (punchier),
+    > 1 narrows it to a quick flick."""
+    return max(0.0, _beat_cos(t, beats)) ** sharpness
+
+
+def _smoothstep(x):
+    x = min(1.0, max(0.0, x))
+    return x * x * (3.0 - 2.0 * x)
+
+
+def head_bob(t):
+    """Laid-back cool: nose dips on every beat, the body rocks left on beat 1
+    and right on beat 3, and the gaze drifts slowly across the crowd."""
+    hit = _on_beat(t, 1.0, sharpness=0.6)
+    pitch = 0.10 * hit
+    height = -0.04 * hit
+    roll = 0.12 * _beat_cos(t, 4.0)
+    yaw = 0.08 * math.sin(2.0 * math.pi * t / (8.0 * SOS_BEAT))
+    return (roll, pitch, yaw, height)
+
+
+def air_guitar(t):
+    """Hunched over an imaginary Strat: leans hard into one side, nose down,
+    'strums' a quick dip on every 8th note and tosses its head up on beat 1
+    of each bar. Swaps sides after two bars, like a guitarist turning to the
+    drummer and back."""
+    side = _sharpen(math.sin(2.0 * math.pi * t / (16.0 * SOS_BEAT)), 0.3)
+    roll = 0.18 * side
+    yaw = 0.10 * side
+    strum = _on_beat(t, 0.5, sharpness=0.4)
+    toss = _on_beat(t, 4.0, sharpness=3.0)
+    pitch = _settle(t, tau=0.3, target=0.08) - 0.14 * toss
+    height = -_settle(t, tau=0.3, target=0.06) - 0.04 * strum
+    return (roll, pitch, yaw, height)
+
+
+def sultan_sway(t):
+    """The swing in 'Sultans of Swing': a wide roll across the bar with the
+    yaw countering it (hips against shoulders), a quarter-cycle pitch so the
+    body draws a loop instead of stopping at each side, and a bounce on
+    every beat."""
+    roll = 0.22 * _beat_cos(t, 4.0)
+    yaw = -0.14 * _beat_cos(t, 4.0)
+    pitch = 0.08 * _beat_cos(t, 4.0, phase=-QUAD)
+    height = -0.05 * _on_beat(t, 1.0, sharpness=0.8)
+    return (roll, pitch, yaw, height)
+
+
+def arpeggio_ripple(t):
+    """The triplet arpeggio flurry: a body circle every two beats, growing
+    over four bars, with a shimmer of three small height pulses per beat on
+    top (one per note of the triplet)."""
+    grow = 0.55 + 0.45 * _smoothstep(t / (16.0 * SOS_BEAT))
+    roll = 0.22 * grow * _beat_cos(t, 2.0)
+    pitch = 0.22 * grow * _beat_cos(t, 2.0, phase=-QUAD)
+    height = -0.03 - 0.03 * _on_beat(t, 1.0 / 3.0, sharpness=0.5)
+    return (roll, pitch, 0.0, height)
+
+
+def take_a_bow(t):
+    """Finale: two big 'da-DUM' nods per bar for two bars, then sinks into a
+    deep bow and holds it while the song fades out. The routine's end ramp
+    brings Spot back up from the bow."""
+    nods = 0.20 * _on_beat(t, 2.0, sharpness=1.0)
+    nod_roll = 0.10 * _beat_cos(t, 4.0)
+    bow = _smoothstep((t - 8.0 * SOS_BEAT) / (2.0 * SOS_BEAT))
+    pitch = (1.0 - bow) * nods + bow * 0.30
+    roll = (1.0 - bow) * nod_roll
+    height = -0.03 * (1.0 - bow) - 0.18 * bow
+    return (roll, pitch, 0.0, height)
+
 # ------------------------------------------------------------------ #
 # Registry
 # ------------------------------------------------------------------ #
@@ -250,4 +341,10 @@ MOVES = {
     'foot_shuffle': foot_shuffle,
     'twist_down': twist_down,
     'twerk': twerk,
+    # Sultans of Swing
+    'head_bob': head_bob,
+    'air_guitar': air_guitar,
+    'sultan_sway': sultan_sway,
+    'arpeggio_ripple': arpeggio_ripple,
+    'take_a_bow': take_a_bow,
 }

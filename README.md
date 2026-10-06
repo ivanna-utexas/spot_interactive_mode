@@ -273,6 +273,42 @@ then plays a single 3 s bounce against the music. Adjust `audio_lead_sec`
 until the bounce lands on the beat: positive if Spot moves before the beat,
 negative if after.
 
+### Picking the song
+
+Two routines ship, both run by the same node with the same controls:
+
+| Song | Start it with | Clip (in `media/`, not in git) |
+| --- | --- | --- |
+| Dancing Queen (44 s, default) | `interactive_mode.launch.py` / `tmuxinator local` | `DancingQueenDemoClip.wav` |
+| Sultans of Swing (46 s, outro solo) | `sultans_of_swing.launch.py` / `SONG=sultans tmuxinator local` | `SultansOfSwingDemoClip.wav` |
+
+Sultans of Swing, bar by bar (~148.5 BPM; each section starts on a downbeat
+detected in the clip, so the moves stay on the beat even as the band drifts):
+
+| Bars | Move | What Spot does |
+| --- | --- | --- |
+| 1–4 | `head_bob` | Nods on every beat, rocks side to side across the bar |
+| 5–8 | `swing_step` | Steps left and right in trot, one bar per sway |
+| 9–12 | `air_guitar` | Hunches to one side and strums on the 8th notes, head toss on beat 1, swaps sides |
+| 13–16 | `sultan_sway` | Wide swinging sway with hips against shoulders, bounce on each beat |
+| 17–20 | `hop_shuffle` | Hops forward and back (HOP gait) under the arpeggios |
+| 21–25 | `arpeggio_ripple` | Body circles that grow, with a triplet shimmer on top |
+| 26–end | `take_a_bow` | Two big nods per bar, then a deep bow held through the fade |
+
+Both stepping sections cover whole cycles, so Spot ends them where it
+started. Calibrate `audio_lead_sec` with Sultans of Swing the same way as for
+Dancing Queen (the delay comes from the speaker, not the song).
+
+To recreate the clip: download the album version (5:50) as a WAV, then cut
+46.256 s starting at 289.390 s:
+
+```bash
+ffmpeg -ss 289.390 -t 46.256 -i sultans_of_swing_full.wav -af "afade=t=in:d=0.01,afade=t=out:st=44.256:d=2.0" -ar 44100 -ac 2 -c:a pcm_s16le media/SultansOfSwingDemoClip.wav
+```
+
+The start is a downbeat; the timeline's section times depend on it, so a clip
+cut anywhere else plays off the beat.
+
 ---
 
 ## How it works
@@ -330,7 +366,7 @@ from the controller, so they always hold it.
 | Launch options (pane 5): `audio_file`, `audio_lead_sec`, `calibration_mode:=true`, `start_mode:=stay`, `include_tracking:=true` | command line |
 | Thresholds, timeouts, audio device (`plughw:3,0`), where to go after a dance | `src/spot_interactive_mode/config/interactive_mode.yaml` |
 | Dog-mode settings under interactive mode, including **follow distance** (`approach_distance`, read once at launch) | `src/spot_interactive_mode/config/dog_mode_overrides.yaml` |
-| Choreography (read at launch, no rebuild needed) | `src/spot_interactive_mode/config/timeline.json` |
+| Choreography (read at launch, no rebuild needed) | `src/spot_interactive_mode/config/timeline.json` (Dancing Queen), `sultans_of_swing.json` |
 
 Settings you can change while it's running (they apply on the next switch into that mode):
 
@@ -352,7 +388,7 @@ tmux/              tmuxinator projects: interactive_mode/ (the whole demo stack)
 rviz2/             interactive_mode.rviz (LiDAR + CenterPoint people, odom frame),
                    mounted_display.rviz (same, sized for Spot's 1024x600 screen)
 params/            spot_driver.yaml          (local only, gitignored: Spot login)
-media/             DancingQueenDemoClip.wav  (local only, gitignored)
+media/             DancingQueenDemoClip.wav, SultansOfSwingDemoClip.wav  (local only, gitignored)
 src/
   spot_interactive_mode/   NEW: state machine, dance runner, node, launch files, tests
   interactive_mode_msgs/   NEW: ModeCommand, ModeState, SetMode

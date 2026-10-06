@@ -7,6 +7,7 @@
 # Works on the host (every pane hops into the container) or inside it.
 # Running it again while the session exists just reattaches.
 # Options, as environment variables in front of `tmuxinator local`:
+#   SONG=sultans         dance to Sultans of Swing instead of Dancing Queen
 #   CALIBRATION=1        "dance" plays one 3 s sync bounce (for AUDIO_LEAD_SEC)
 #   NO_LIDAR=1           skip Velodyne + people tracking (dance-only test)
 #   AUDIO_LEAD_SEC=<s>   audio offset (default 0.0)
@@ -23,8 +24,12 @@
 #   Circle      = dance (hold R1)  Share       = idle (interactive mode off)
 <%
   lidar = ENV["NO_LIDAR"] != "1"
-  audio = File.expand_path("~/spot_interactive_mode/media/DancingQueenDemoClip.wav")
-  audio_arg = File.exist?(audio) ? "audio_file:=$HOME/spot_interactive_mode/media/DancingQueenDemoClip.wav" : ""
+  # SONG picks the launch file (its timeline) and the clip it plays.
+  sultans = ENV["SONG"] == "sultans"
+  mode_launch = sultans ? "sultans_of_swing.launch.py" : "interactive_mode.launch.py"
+  clip = sultans ? "SultansOfSwingDemoClip.wav" : "DancingQueenDemoClip.wav"
+  audio = File.expand_path("~/spot_interactive_mode/media/#{clip}")
+  audio_arg = File.exist?(audio) ? "audio_file:=$HOME/spot_interactive_mode/media/#{clip}" : ""
   calibration = ENV["CALIBRATION"] == "1" ? "true" : "false"
   joy_dev = ENV["JOY_DEV"] || "/dev/input/ps4_primary"
   # Each pane names itself (shown in the border; `stop` finds "mode" by it),
@@ -54,7 +59,7 @@ windows:
         - teleop: <%= run.("teleop", "ros2 launch spot_interactive_mode teleop.launch.py joy_dev:=#{joy_dev}") %>
         # Also starts dog mode, configured for interactive mode. Never run
         # spot_dog_mode's own launch next to it.
-        - mode: <%= run.("mode", "ros2 launch spot_interactive_mode interactive_mode.launch.py #{audio_arg} audio_lead_sec:=#{ENV['AUDIO_LEAD_SEC'] || '0.0'} calibration_mode:=#{calibration}") %>
+        - mode: <%= run.("mode", "ros2 launch spot_interactive_mode #{mode_launch} #{audio_arg} audio_lead_sec:=#{ENV['AUDIO_LEAD_SEC'] || '0.0'} calibration_mode:=#{calibration}") %>
         - keyboard: <%= run.("keyboard", "sleep 3 && ros2 run spot_interactive_mode mode_keyboard") %>
         # VNC desktop :9 (port 5909). The first run in a fresh container asks
         # for a VNC password here. Xvnc outlives `stop`; a restart reuses it.
