@@ -24,8 +24,9 @@ alias killros2='killall -9 ros2 _ros2_daemon rviz2 gzserver robot_state_publishe
 alias cleanpkgs='colcon clean packages --packages-select '
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=$HOME/${WORKSPACE_NAME}/config/cyclonedds.xml
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
-export ROS_LOCALHOST_ONLY=0
+# Jazzy enforces the discovery range (Humble ignored it); LOCALHOST would cut
+# off the laptop. Peers are still limited by the Cyclone DDS unicast config.
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
 # Set ORIN_IP (Payload) from environment variable if provided
 if [ -n "$ORIN_IP" ]; then
     export ORIN_IP=$ORIN_IP
@@ -36,7 +37,7 @@ if [ -n "$SPOT_IP" ]; then
     export SPOT_IP=$SPOT_IP
 fi
 
-source "/opt/ros/humble/setup.bash" --
+source "/opt/ros/__ROS_DISTRO__/setup.bash" --
 if [ -f "$HOME/${WORKSPACE_NAME}/install/setup.bash" ]; then
     source "$HOME/${WORKSPACE_NAME}/install/setup.bash" --
 fi

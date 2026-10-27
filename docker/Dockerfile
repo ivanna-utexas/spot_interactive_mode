@@ -1,16 +1,20 @@
 # =============================================================================
 # Base Image and Build Arguments
-#  - Docker container must match jetpack version installed on Jetson
-#    - Image list: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/l4t-base/tags
-#  - ROS2 Humble is used for Jetson Orin OpenCV and Python version compatibility
-#  - For native builds: ARM64/Jetson uses l4t-jetpack, AMD64 uses Ubuntu 22.04
+#  - Robot: Jetson AGX Thor (JetPack 7 / L4T R38, Ubuntu 24.04, CUDA 13, sm_110)
+#    - There is no l4t-jetpack image for JetPack 7, so the robot uses the arm64
+#      (SBSA) CUDA image; the host driver is injected by --runtime nvidia.
+#    - Image list: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/cuda/tags
+#  - ROS 2 Jazzy, which is the ROS 2 LTS release for Ubuntu 24.04
+#  - For native builds: ARM64/Jetson uses the CUDA image, AMD64 uses Ubuntu 24.04
+#  - Jetson Orin (JetPack 6 / Humble) is still built from the main branch
 # =============================================================================
 
 # Build arguments
-ARG ros_distro=humble
+ARG ros_distro=jazzy
 ARG gid
 ARG uid
 ARG username
+ARG i2c_gid=115
 ARG install_cuda=false
 ARG is_jetson=false
 ARG BASE_STAGE_NAME=base_amd64
@@ -18,40 +22,19 @@ ARG BASE_STAGE_NAME=base_amd64
 # =============================================================================
 # Stage 1: Platform-Specific Base Images
 # =============================================================================
-# For Robot (ARM64/Jetson): Use NVIDIA JetPack base image
+# For Robot (ARM64/Jetson Thor): CUDA 13 + cuDNN 9 image, TensorRT added in Stage 3
 # Note: Stage name uses "arm64" to match Docker's TARGETARCH variable
-ARG BASE_IMAGE_ARM64=nvcr.io/nvidia/l4t-jetpack:r36.4.0
+ARG BASE_IMAGE_ARM64=nvcr.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04
 FROM ${BASE_IMAGE_ARM64} AS base_arm64
-# JetPack container: includes CUDA, cuDNN, TensorRT, VPI, Jetson Multimedia, and so on
-# Alternative ML container with PyTorch, TensorFlow pre-installed:
-# FROM nvcr.io/nvidia/l4t-ml:r36.2.0-py3 AS base-arm64
 
-ARG is_jetson
-ARG install_cuda
+ENV CUDA_HOME=/usr/local/cuda
+# graphics is needed for EGL/OpenGL (RViz, eye display) and by the Azure Kinect
+# depth engine, which unprojects on the GPU. The CUDA image only enables compute.
+ENV NVIDIA_DRIVER_CAPABILITIES=all
 
-# NOTE that while the package repositories are not enabled inside the container, jetpack is already installed.
-# To get a list of all packages, check the host by running:
-# cat /var/lib/apt/lists/repo.download.nvidia.com_jetson_common_dists_r36.4_main_binary-arm64_Packages |grep cudnn
-# Install the jetson package repository (only on actual Jetson devices)
-RUN if [ "$is_jetson" = "true" ]; then \
-        apt-key adv --fetch-key https://repo.download.nvidia.com/jetson/jetson-ota-public.asc && \
-        echo "deb https://repo.download.nvidia.com/jetson/common r36.4 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
-        echo "deb https://repo.download.nvidia.com/jetson/t234 r36.4 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
-        echo "deb https://repo.download.nvidia.com/jetson/ffmpeg r36.4 main" >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list; \
-    fi
-
-# Install cuDNN (only when CUDA is available, required for PyTorch)
-# NOTE cudnn8 is not compatible with latest PyTorch on Jetson, so we install cudnn9
-RUN if [ "$install_cuda" = "true" ]; then \
-        apt-get update && apt-get install -y \
-        libcudnn9 \
-        libcudnn9-dev \
-        && rm -rf /var/lib/apt/lists/*; \
-    fi
-
-# For Desktop (AMD64/x86_64): Use Ubuntu 22.04 with optional CUDA
+# For Desktop (AMD64/x86_64): Use Ubuntu 24.04 with optional CUDA
 # Note: Stage name uses "amd64" to match Docker's TARGETARCH variable
-FROM ubuntu:22.04 AS base_amd64
+FROM ubuntu:24.04 AS base_amd64
 
 ARG install_cuda
 
@@ -64,15 +47,15 @@ RUN if [ "$install_cuda" = "true" ]; then \
             wget \
             gnupg2 \
             && rm -rf /var/lib/apt/lists/* && \
-        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
         dpkg -i cuda-keyring_1.1-1_all.deb && \
         rm cuda-keyring_1.1-1_all.deb && \
         apt-get update && apt-get install -y \
             ${CUDA_TOOLKIT_PKG} \
-            libcudnn8 \
-            libcudnn8-dev \
+            ${CUDNN_PKG} \
             && rm -rf /var/lib/apt/lists/*; \
     fi
+ENV CUDA_HOME=/usr/local/cuda
 
 # =============================================================================
 # Stage 2: Select Base - Auto-detects platform during native build
@@ -82,18 +65,28 @@ RUN if [ "$install_cuda" = "true" ]; then \
 ARG BASE_STAGE_NAME
 FROM $BASE_STAGE_NAME AS base-selected
 
-ARG ros_distro=humble
+ARG ros_distro=jazzy
 ARG gid
 ARG uid
 ARG username
 
 # =============================================================================
-# Stage 3: Base Setup - Locale and Essential Tools
+# Stage 3: Base Setup - Locale, Essential Tools and TensorRT
 # =============================================================================
 FROM base-selected AS base-setup
 
 # Set non-interactive installation
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Ubuntu 24.04 marks the system Python as externally managed (PEP 668), which
+# makes every `pip install` below fail. The image is single-purpose, and ROS
+# and colcon only see the system interpreter, so install into it on purpose.
+# The constraints keep pip from replacing the NumPy that cv_bridge and the
+# other Ubuntu/ROS Python packages were built against, and from installing a
+# setuptools that colcon-core rejects.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
+RUN printf 'numpy==1.26.4\nsetuptools<80\n' > /etc/pip-constraints.txt
 
 # Setup Locale
 RUN apt-get update && apt-get install -y locales && \
@@ -114,6 +107,33 @@ RUN apt-get update && apt-get install -y \
     iproute2 \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
+
+# TensorRT (people_detector / CUDA-CenterPoint), from the CUDA apt repo that the
+# CUDA base images configure. 10.13 is the first release with Thor (sm_110)
+# support. Every package is pinned: apt resolves unpinned dependencies to the
+# newest TensorRT in the repo (11.x). libnvinfer-bin provides
+# /usr/src/tensorrt/bin/trtexec for scripts/generate_centerpoint_engine.sh.
+ARG TRT_VERSION=10.13.3.9-1+cuda13.0
+RUN if [ -d /usr/local/cuda ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            libnvinfer10=${TRT_VERSION} \
+            libnvinfer-lean10=${TRT_VERSION} \
+            libnvinfer-dispatch10=${TRT_VERSION} \
+            libnvinfer-plugin10=${TRT_VERSION} \
+            libnvinfer-vc-plugin10=${TRT_VERSION} \
+            libnvonnxparsers10=${TRT_VERSION} \
+            libnvinfer-headers-dev=${TRT_VERSION} \
+            libnvinfer-headers-plugin-dev=${TRT_VERSION} \
+            libnvinfer-dev=${TRT_VERSION} \
+            libnvinfer-plugin-dev=${TRT_VERSION} \
+            libnvonnxparsers-dev=${TRT_VERSION} \
+            libnvinfer-bin=${TRT_VERSION} \
+        && apt-mark hold 'libnvinfer*' 'libnvonnxparsers*' \
+        && ln -sf /usr/src/tensorrt/bin/trtexec /usr/local/bin/trtexec \
+        && rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo "Skipping TensorRT installation (CUDA not found)"; \
+    fi
 
 # CUDA-CenterPoint's bundled ONNX parser sources were generated with protobuf
 # 3.21. Keep this ABI-stable toolchain separate from Ubuntu/ROS protobuf.
@@ -140,35 +160,22 @@ FROM base-setup AS ros2-install
 ARG ros_distro
 ARG is_jetson
 
-# Setup Isaac ROS2 APT repository (ARM64 only, will fail gracefully on AMD64)
-RUN if [ "$is_jetson" = "true" ]; then \
-  wget -qO - https://isaac.download.nvidia.com/isaac-ros/repos.key | apt-key add - && \
-  grep -qxF "deb https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.0" /etc/apt/sources.list || \
-  echo "deb https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.0" | tee -a /etc/apt/sources.list || true; \
-fi
-
-# Setup Official ROS2 APT repository
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+# Setup Official ROS2 APT repository. The ros2-apt-source package installs the
+# signing key and keeps it current (the old ros.key download has expired).
+ARG ROS_APT_SOURCE_VERSION=1.3.0
+RUN curl -fsSL -o /tmp/ros2-apt-source.deb \
+      "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $UBUNTU_CODENAME)_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && \
+    rm /tmp/ros2-apt-source.deb
 
 # Install the supported ROS desktop set without the simulator metapackages.
-# desktop-full pulls Ignition/Gazebo into the Jetson image even though this
-# robot workspace does not use it, and ARM64 repository syncs can temporarily
-# publish incompatible Ignition component versions.
+# desktop-full pulls Gazebo into the Jetson image even though this robot
+# workspace does not use it.
 RUN apt-get update && apt-get install -y \
     ros-${ros_distro}-desktop \
     ros-${ros_distro}-rmw-cyclonedds-cpp \
     ros-dev-tools \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Isaac ROS common dependencies and VPI (ARM64 only, skip on AMD64)
-# Note: VPI libraries are also part of the Jetson host system and will be mounted.
-# This ensures any additional dependencies are met inside the container.
-RUN if [ "$is_jetson" = "true" ]; then \
-    apt-get update && \
-    (apt-get install -y ros-${ros_distro}-isaac-ros-common || echo "Isaac ROS not available on this platform") && \
-    rm -rf /var/lib/apt/lists/*; \
-fi
 
 # Initialize rosdep
 RUN rosdep init && \
@@ -180,20 +187,15 @@ RUN rosdep init && \
 FROM ros2-install AS hardware-deps
 
 # Re-declare build arguments for this stage
-ARG install_cuda
+ARG ros_distro
 ARG is_jetson
-COPY scripts/install_realsense_library.sh external* /tmp/librealsense/
-RUN if [ "$is_jetson" = "true" ]; then \
-  if [ "$install_cuda" = "true" ]; then \
-    apt-get update && apt-get install -y kmod && \
-    /tmp/librealsense/install_realsense_library.sh && \
-    rm /tmp/librealsense/install_realsense_library.sh; \
-  else \
-    echo "Skipping Realsense installation (CUDA not found)"; \
-  fi; \
-else \
-  echo "Skipping Realsense installation (Not on Jetson)"; \
-fi
+
+# RealSense SDK + ROS wrapper from the ROS apt repo (RSUSB backend: no kernel
+# patches, and no source build against CUDA 13)
+RUN apt-get update && apt-get install -y \
+    ros-${ros_distro}-librealsense2 \
+    ros-${ros_distro}-realsense2-camera \
+    && rm -rf /var/lib/apt/lists/*
 
 # Azure Kinect SDK
 COPY scripts/install_azure_kinect_sdk.sh /tmp/install_azure_kinect_sdk.sh
@@ -212,10 +214,6 @@ fi
 FROM hardware-deps AS app-deps
 
 # Audio capture dependencies (for spot_audio: Azure Kinect mic array)
-# RUN apt-get update && apt-get install -y \
-#     libportaudio2 \
-#     alsa-utils \
-#     && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get install -y \
     libportaudio2 \
     portaudio19-dev \
@@ -235,9 +233,11 @@ RUN set -e \
  && git clone -b ros2 --depth 1 https://github.com/dawonn/vectornav.git \
  && cd "$VN_WS" \
  && . /opt/ros/${ros_distro}/setup.sh \
+ && apt-get update \
  && rosdep update \
  && rosdep install --from-paths src --ignore-src -y -r \
- && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+ && colcon build --merge-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
+ && rm -rf "$VN_WS/build" "$VN_WS/log" /var/lib/apt/lists/*
 
 # Source the overlay in login + interactive shells
 RUN printf '# VectorNav overlay\n[ -f %s/local_setup.bash ] && . %s/local_setup.bash\n' \
@@ -260,8 +260,19 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i -E '/^\s*opencv-(contrib-)?python(-headless)?([<=>].*)?\s*$/d' /tmp/spot_wrapper_requirements.txt
 
-# Run the Spot install script
-RUN /tmp/install_spot_ros2.sh --arm64
+# Run the Spot install script: builds spot-cpp-sdk and bosdyn_msgs from source,
+# because their released binaries only target Ubuntu 22.04 / Humble
+ENV BOSDYN_WS=/opt/bosdyn_ws
+RUN ROS_DISTRO=${ros_distro} /tmp/install_spot_ros2.sh && rm /tmp/install_spot_ros2.sh
+
+# Source the bosdyn_msgs overlay in login + interactive shells
+RUN printf '# bosdyn_msgs overlay\n[ -f %s/local_setup.bash ] && . %s/local_setup.bash\n' \
+           "$BOSDYN_WS/install" "$BOSDYN_WS/install" \
+      | tee /etc/profile.d/10-bosdyn-msgs.sh >/dev/null \
+ && chmod 0644 /etc/profile.d/10-bosdyn-msgs.sh \
+ && printf '\n# bosdyn_msgs overlay\n[ -f %s/local_setup.bash ] && . %s/local_setup.bash\n' \
+           "$BOSDYN_WS/install" "$BOSDYN_WS/install" \
+      >> /etc/bash.bashrc
 
 # Safety net: remove any OpenCV wheels that might have been pulled indirectly
 RUN python3 -m pip uninstall -y opencv-python opencv-contrib-python opencv-python-headless || true
@@ -300,17 +311,24 @@ RUN apt-get update && apt-get install -y \
   gstreamer1.0-x \
   && rm -rf /var/lib/apt/lists/*
 
-# Azure Kinect ROS Driver
+# Azure Kinect ROS Driver. The humble branch is the newest one; Microsoft no
+# longer maintains the driver, so Jazzy build fixes live in docker/patches/.
+ARG AZURE_KINECT_ROS_DRIVER_REF=humble
+COPY docker/patches/azure_kinect_ros_driver /tmp/azure_kinect_patches
 WORKDIR /opt/azure_kinect_ws
 RUN apt-get update && \
     mkdir -p src && \
     cd src && \
-    git clone -b humble https://github.com/microsoft/Azure_Kinect_ROS_Driver.git && \
+    git clone -b ${AZURE_KINECT_ROS_DRIVER_REF} https://github.com/microsoft/Azure_Kinect_ROS_Driver.git && \
+    for p in /tmp/azure_kinect_patches/*.patch; do \
+      [ -e "$p" ] || continue; \
+      git -C Azure_Kinect_ROS_Driver apply "$p"; \
+    done && \
     cd .. && \
     . /opt/ros/${ros_distro}/setup.sh && \
     rosdep install --from-paths src --ignore-src -r -y && \
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf build log /tmp/azure_kinect_patches /var/lib/apt/lists/*
 
 # Source Azure Kinect Driver in bashrc
 RUN echo "source /opt/azure_kinect_ws/install/setup.bash" >> /etc/bash.bashrc
@@ -318,13 +336,13 @@ RUN echo "source /opt/azure_kinect_ws/install/setup.bash" >> /etc/bash.bashrc
 # EGL, OpenGL libraries (for GUI applications)
 RUN apt-get update && apt-get install -y \
   libegl1 \
-  libegl1-mesa \
-  libgles2-mesa \
+  libegl-mesa0 \
   libgles2 \
   libglvnd-dev \
-  libgl1-mesa-glx \
+  libgl1 \
+  libglx-mesa0 \
   libgl1-mesa-dri \
-  mesa-utils-extra \
+  mesa-utils \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Xfce4 and TurboVNC
@@ -340,8 +358,8 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     elif [ "$TARGETARCH" = "arm64" ]; then \
       wget https://github.com/TurboVNC/turbovnc/releases/download/3.2.1/turbovnc_3.2.1_arm64.deb -O /tmp/turbovnc.deb; \
     fi && \
-    dpkg -i /tmp/turbovnc.deb && \
-    rm /tmp/turbovnc.deb && \
+    apt-get update && apt-get install -y /tmp/turbovnc.deb && \
+    rm -rf /tmp/turbovnc.deb /var/lib/apt/lists/* && \
     ln -s /opt/TurboVNC/bin/* /usr/local/bin/
 
 # Copy VNC startup script
@@ -354,9 +372,11 @@ RUN chmod +x /usr/local/bin/vnc
 FROM app-deps AS python-ml
 
 ARG install_cuda
-ARG PT_VER=2.4.1
-ARG VIS_VER=0.19.1
-ARG AUD_VER=2.4.1
+ARG is_jetson
+# PyTorch CUDA 13 wheels include sm_110 (Thor) and Blackwell desktop GPUs.
+# torchaudio is not installed: nothing in src/ uses it.
+ARG PT_VER=2.14.1
+ARG VIS_VER=0.29.1
 
 # pip
 RUN apt-get update && apt-get install -y \
@@ -367,34 +387,21 @@ RUN apt-get update && apt-get install -y \
   python3-colcon-clean \
   libgfortran5 \
   && rm -rf /var/lib/apt/lists/*
-#RUN python3 -m ensurepip --default-pip && python3 -m pip install --upgrade pip
 
 RUN pip3 install --no-cache-dir sounddevice==0.5.1
 
 
-# pytorch (using CUDA 12.6 compatible version)
-ARG install_cuda
-ARG is_jetson
+# pytorch
 # if this step fails, run `docker builder prune`
-RUN --mount=type=cache,target=/var/cache/downloads --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,target=/root/.cache/pip \
   if [ "$is_jetson" = "true" ]; then \
-    # For Jetson: install gfortran and compatible libraries, then use NVIDIA's PyTorch \
-    # Installation instructions: https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform/index.html
-    # Available versions are listed by jetpack version here: https://developer.download.nvidia.com/compute/redist/jp/
-    if [ ! -f /var/cache/downloads/cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb ]; then \
-        wget -P /var/cache/downloads https://developer.download.nvidia.com/compute/cusparselt/0.8.1/local_installers/cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb; \
-    fi && \
-    dpkg -i /var/cache/downloads/cusparselt-local-tegra-repo-ubuntu2204-0.8.1_0.8.1-1_arm64.deb && \
-    cp /var/cusparselt-local-tegra-repo-ubuntu2204-0.8.1/cusparselt-*-keyring.gpg /usr/share/keyrings/ && \
-    apt-get update && apt-get install -y gfortran libopenblas-dev cusparselt && rm -rf /var/lib/apt/lists/* && \
-    pip3 install --no-cache-dir https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl && \
-    pip3 install onnxruntime-gpu --index-url https://pypi.jetson-ai-lab.io/jp6/cu126; \
+    pip3 install torch==${PT_VER} torchvision==${VIS_VER} --index-url https://download.pytorch.org/whl/cu130; \
   elif [ "$install_cuda" = "true" ]; then \
     . /tmp/detect_gpu_setup.sh && \
-    pip3 install torch==${PT_VER} torchvision==${VIS_VER} torchaudio==${AUD_VER} --index-url https://download.pytorch.org/whl/${CUDA_TAG}; \
+    pip3 install torch==${PT_VER} torchvision==${VIS_VER} --index-url https://download.pytorch.org/whl/${CUDA_TAG}; \
   else \
     # CPU Fallback
-    pip3 install torch==${PT_VER} torchvision==${VIS_VER} torchaudio==${AUD_VER} --index-url https://download.pytorch.org/whl/cpu; \
+    pip3 install torch==${PT_VER} torchvision==${VIS_VER} --index-url https://download.pytorch.org/whl/cpu; \
   fi
 
 # leg_detector
@@ -424,7 +431,7 @@ RUN apt-get update && apt-get install -y \
   liblapack-dev \
   libceres-dev \
   libtbb-dev \
-  libncurses5-dev \
+  libncurses-dev \
   libpopt-dev \
   libpcl-dev \
   ros-${ros_distro}-ament-cmake \
@@ -439,7 +446,7 @@ RUN apt-get update && apt-get install -y \
 #     g++ \
 #     git \
 #     libacl1-dev \
-#     libncurses5-dev \
+#     libncurses-dev \
 #     pkg-config \
 #     && rm -rf /var/lib/apt/lists/*
 # WORKDIR /tmp
@@ -453,6 +460,7 @@ RUN apt-get update && apt-get install -y \
 # =============================================================================
 FROM nav-slam AS utilities
 
+ARG ros_distro
 ARG is_jetson
 
 # Utils
@@ -469,7 +477,7 @@ fi
 
 # ROS2 and other dependencies installation scripts
 COPY scripts/ros2_deps.sh /tmp/ros2_deps.sh
-RUN /tmp/ros2_deps.sh && rm /tmp/ros2_deps.sh
+RUN ROS_DISTRO=${ros_distro} /tmp/ros2_deps.sh && rm /tmp/ros2_deps.sh
 
 # Tracing Deps
 RUN apt-get update && apt-get install -y \
@@ -478,7 +486,10 @@ RUN apt-get update && apt-get install -y \
     python3-babeltrace \
     python3-lttng \
     && rm -rf /var/lib/apt/lists/*
-RUN pip install \
+# pip can't upgrade packages apt installed (they have no RECORD file), so put
+# newer copies of the ones jupyter needs in /usr/local first
+RUN pip install --ignore-installed --no-deps tornado psutil lark && \
+    pip install \
     jupyter \
     bokeh \
     pandas
@@ -492,6 +503,7 @@ ARG uid
 ARG gid
 ARG username
 ARG ros_distro
+ARG i2c_gid
 
 ENV UID=$uid
 ENV GID=$gid
@@ -499,9 +511,18 @@ ENV USERNAME=$username
 ENV ROS_DISTRO=$ros_distro
 
 # Create user and group, then configure sudo
+# Ubuntu 24.04 images ship an "ubuntu" user with UID/GID 1000, which the
+# existing-user branch below renames to $USERNAME.
 RUN set -e && \
-    # Create group if it doesn't exist
-    getent group ${GID} || groupadd -g ${GID} ${USERNAME} && \
+    # Create group if it doesn't exist, or rename the one at GID (e.g. "ubuntu")
+    if getent group ${GID} >/dev/null 2>&1; then \
+        existing_group=$(getent group ${GID} | cut -d: -f1) && \
+        if [ "$existing_group" != "${USERNAME}" ] && ! getent group ${USERNAME} >/dev/null 2>&1; then \
+            groupmod -n ${USERNAME} $existing_group; \
+        fi; \
+    else \
+        groupadd -g ${GID} ${USERNAME}; \
+    fi && \
     # Handle user creation/modification
     if id ${UID} >/dev/null 2>&1; then \
         # User with this UID exists, modify it
@@ -525,25 +546,25 @@ RUN set -e && \
 
 # Create groups matching the host's group IDs, handling existing groups
 RUN set -e && \
-    # Handle i2c group (host GID: 116)
-    if getent group i2c >/dev/null 2>&1 && getent group 116 >/dev/null 2>&1; then \
-        # Both i2c name and GID 116 exist - check if they're the same group
-        existing_group=$(getent group 116 | cut -d: -f1) && \
+    # Handle i2c group (host GID passed in by ./container as i2c_gid)
+    if getent group i2c >/dev/null 2>&1 && getent group ${i2c_gid} >/dev/null 2>&1; then \
+        # Both i2c name and the host GID exist - check if they're the same group
+        existing_group=$(getent group ${i2c_gid} | cut -d: -f1) && \
         if [ "$existing_group" != "i2c" ]; then \
-            # Different groups: delete the one with wrong GID, rename the one at 116
+            # Different groups: delete the one with wrong GID, rename the one at the host GID
             groupdel i2c && \
             groupmod -n i2c $existing_group; \
         fi; \
-    elif getent group 116 >/dev/null 2>&1; then \
-        # Group with GID 116 exists, rename it to i2c
-        existing_group=$(getent group 116 | cut -d: -f1) && \
+    elif getent group ${i2c_gid} >/dev/null 2>&1; then \
+        # Group with the host GID exists, rename it to i2c
+        existing_group=$(getent group ${i2c_gid} | cut -d: -f1) && \
         groupmod -n i2c $existing_group; \
     elif getent group i2c >/dev/null 2>&1; then \
-        # i2c group exists with different GID, change its GID to 116
-        groupmod -g 116 i2c; \
+        # i2c group exists with different GID, change its GID to the host GID
+        groupmod -g ${i2c_gid} i2c; \
     else \
         # Create new i2c group
-        groupadd -g 116 i2c; \
+        groupadd -g ${i2c_gid} i2c; \
     fi && \
     # Handle dialout group (host GID: 20)
     if getent group dialout >/dev/null 2>&1 && getent group 20 >/dev/null 2>&1; then \
@@ -606,12 +627,9 @@ ENV HOME=/home/$username
 WORKDIR /home/$username
 
 # Install user level pip dependencies
-# Used for av_imitation
-# Need this very specific verison of numpy for pytorch and cv_bridge compatibility
-#   - PyTorch: 1.26.4 provides the 0x10 API version it requires.
-#   - ROS 2: NumPy 1.26.4 is backward compatible with modules compiled against 1.21, so cv_bridge will continue to work.
-RUN --mount=type=cache,target=/tmp/pip-cache,mode=0777 PIP_CACHE_DIR=/tmp/pip-cache pip3 install \
-    "numpy==1.26.4" \
+# NumPy stays at Ubuntu 24.04's 1.26.4 (pinned by /etc/pip-constraints.txt),
+# which cv_bridge and the other ROS Python packages were built against.
+RUN --mount=type=cache,target=/tmp/pip-cache,mode=0777 PIP_CACHE_DIR=/tmp/pip-cache pip3 install --user \
     onnx \
     onnxruntime \
     flask \
@@ -620,9 +638,10 @@ RUN --mount=type=cache,target=/tmp/pip-cache,mode=0777 PIP_CACHE_DIR=/tmp/pip-ca
     soxr==0.5.0 \
     faster-whisper==1.1.0 \
     ctranslate2==4.5.0
+ENV PATH=/home/$username/.local/bin:$PATH
 
 # Pre-download Whisper + Silero VAD models (no runtime network dependency)
-# Note: torch.hub.load for silero-vad requires torchaudio (not available on Jetson),
+# Note: torch.hub.load for silero-vad requires torchaudio (not installed),
 # so we download the repo zip and copy the JIT file directly.
 RUN mkdir -p /opt/spot_audio_models && \
     python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', download_root='/opt/spot_audio_models/whisper-base', device='cpu', compute_type='int8')" && \

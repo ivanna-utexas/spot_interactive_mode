@@ -1,0 +1,7 @@
+# PS4 DualShock 4 over USB -> /dev/input/ps4 (the teleop pane's default).
+# v1 pad 05c4, v2 pad 09cc, Sony wireless USB adapter 0ba0. Only USB works:
+# the Tegra kernel has no hid-sony / hid-playstation driver, so a Bluetooth pad
+# pairs but sends no input. Install once on the host:
+#   sudo cp config/99-ps4-controller.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=input
+SUBSYSTEM=="input", KERNEL=="js[0-9]*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="05c4|09cc|0ba0", SYMLINK+="input/ps4"

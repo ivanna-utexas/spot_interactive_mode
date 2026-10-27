@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_FILE_PATH="$HOME/spot_companion_mode/config"
+CONFIG_FILE_PATH="$HOME/spot_interactive_mode/config"
 
 # if the hostname is "spot" or "spot-orin" set the config to spot.xml and if the hostname is "spot-laptop" set the config to laptop.xml
 HOSTNAME=$(hostname)

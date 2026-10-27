@@ -41,9 +41,19 @@ if [[ -z "${VERSION_HEADER}" ]]; then
     exit 4
 fi
 
-TRT_MAJOR="$(awk '$2 == "NV_TENSORRT_MAJOR" {print $3}' "${VERSION_HEADER}")"
-TRT_MINOR="$(awk '$2 == "NV_TENSORRT_MINOR" {print $3}' "${VERSION_HEADER}")"
-TRT_PATCH="$(awk '$2 == "NV_TENSORRT_PATCH" {print $3}' "${VERSION_HEADER}")"
+# TensorRT 10.13+ defines NV_TENSORRT_MAJOR as another macro
+# (TRT_MAJOR_ENTERPRISE), so follow one level of indirection.
+trt_version_field() {
+    local value
+    value="$(awk -v name="$1" '$1 == "#define" && $2 == name {print $3; exit}' "${VERSION_HEADER}")"
+    if [[ -n "${value}" && ! "${value}" =~ ^[0-9]+$ ]]; then
+        value="$(awk -v name="${value}" '$1 == "#define" && $2 == name {print $3; exit}' "${VERSION_HEADER}")"
+    fi
+    [[ "${value}" =~ ^[0-9]+$ ]] && echo "${value}"
+}
+TRT_MAJOR="$(trt_version_field NV_TENSORRT_MAJOR || true)"
+TRT_MINOR="$(trt_version_field NV_TENSORRT_MINOR || true)"
+TRT_PATCH="$(trt_version_field NV_TENSORRT_PATCH || true)"
 if [[ -z "${TRT_MAJOR}" || -z "${TRT_MINOR}" || -z "${TRT_PATCH}" ]]; then
     echo "Unable to determine TensorRT version from ${VERSION_HEADER}." >&2
     exit 5

@@ -70,8 +70,14 @@ find_library(TENSORRT_LIBRARY nvinfer
   REQUIRED
 )
 
+# CUDA-CenterPoint's bundled 3rdparty/libspconv is a CUDA 12 build whose kernels
+# don't run on Thor. Use the libspconv v1.3.2 stack from
+# libraries/3DSparseConvolution instead, built for the installed CUDA major
+# version (sm_110 + sm_120 for CUDA 13). Its headers, parser and library must
+# come from the same version: v1.3.2 changed the IEngineBuilder::build() ABI.
+set(SPCONV_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Lidar_AI_Solution/libraries/3DSparseConvolution")
 set(SPCONV_LIB_DIR
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  "${SPCONV_DIR}/libspconv/lib/${CMAKE_HOST_SYSTEM_PROCESSOR}_cuda${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR}")
 find_library(SPCONV_LIBRARY spconv PATHS "${SPCONV_LIB_DIR}" NO_DEFAULT_PATH REQUIRED)
 
 file(GLOB CENTERPOINT_SOURCES CONFIGURE_DEPENDS
@@ -79,9 +85,9 @@ file(GLOB CENTERPOINT_SOURCES CONFIGURE_DEPENDS
   "${CENTERPOINT_DIR}/src/*.cpp"
 )
 set(SPCONV_PARSER_SOURCES
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/parser/onnx-parser.cpp"
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/onnx/onnx-ml.pb.cpp"
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/onnx/onnx-operators-ml.pb.cpp"
+  "${SPCONV_DIR}/libspconv/parser/onnx-parser.cpp"
+  "${SPCONV_DIR}/src/onnx/onnx-ml.pb.cpp"
+  "${SPCONV_DIR}/src/onnx/onnx-operators-ml.pb.cpp"
 )
 
 add_executable(centerpoint_people_node
@@ -96,16 +102,21 @@ set_target_properties(centerpoint_people_node PROPERTIES
   BUILD_RPATH "${SPCONV_LIB_DIR}"
   INSTALL_RPATH "${SPCONV_LIB_DIR}"
 )
+# 110 = Jetson Thor. Desktop builds compile for the local GPU.
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-  set_property(TARGET centerpoint_people_node PROPERTY CUDA_ARCHITECTURES 87)
+  set(PEOPLE_DETECTOR_CUDA_ARCHITECTURES 110 CACHE STRING "CUDA architectures for CenterPoint")
+else()
+  set(PEOPLE_DETECTOR_CUDA_ARCHITECTURES native CACHE STRING "CUDA architectures for CenterPoint")
 endif()
+set_property(TARGET centerpoint_people_node
+  PROPERTY CUDA_ARCHITECTURES ${PEOPLE_DETECTOR_CUDA_ARCHITECTURES})
 target_include_directories(centerpoint_people_node PRIVATE
   include
   "${TENSORRT_INCLUDE_DIR}"
   "${CENTERPOINT_DIR}/include"
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/include"
-  "${CENTERPOINT_DIR}/3rdparty/libspconv/parser"
-  "${CENTERPOINT_DIR}/3rdparty/libspconv"
+  "${SPCONV_DIR}/libspconv/include"
+  "${SPCONV_DIR}/libspconv/parser"
+  "${SPCONV_DIR}/src"
 )
 ament_target_dependencies(centerpoint_people_node
   rclcpp sensor_msgs geometry_msgs std_msgs tf2 tf2_ros bva_msgs

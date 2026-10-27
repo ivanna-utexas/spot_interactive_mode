@@ -4,14 +4,16 @@
 #
 #   cd ~/spot_interactive_mode/tmux/interactive_mode && tmuxinator local
 #
-# Works on the host (every pane hops into the container) or inside it.
+# Works on the host (every pane hops into the container) or inside it, from
+# any worktree: run it from that worktree's tmux/interactive_mode instead.
 # Running it again while the session exists just reattaches.
 # Options, as environment variables in front of `tmuxinator local`:
 #   SONG=sultans         dance to Sultans of Swing instead of Dancing Queen
+#   SONG=dior            dance to Dior (Pop Smoke); bring media/DiorDemoClip.wav
 #   CALIBRATION=1        "dance" plays one 3 s sync bounce (for AUDIO_LEAD_SEC)
 #   NO_LIDAR=1           skip Velodyne + people tracking (dance-only test)
 #   AUDIO_LEAD_SEC=<s>   audio offset (default 0.0)
-#   JOY_DEV=<path>       PS4 pad (default /dev/input/ps4_primary)
+#   JOY_DEV=<path>       PS4 pad (default /dev/input/ps4)
 #   FORCE=1              start even if parts of the stack are already running
 #
 # Stop, from where you started it (interactive mode first, so it turns dog
@@ -24,24 +26,29 @@
 #   Circle      = dance (hold R1)  Share       = idle (interactive mode off)
 <%
   lidar = ENV["NO_LIDAR"] != "1"
+  # The checkout this file lives in (`tmuxinator local` runs from its folder),
+  # so a worktree starts its own container rather than ~/spot_interactive_mode.
+  # Inside the container that checkout is mounted at ~/spot_interactive_mode.
+  ws = File.expand_path("../..", Dir.pwd)
   # SONG picks the launch file (its timeline) and the clip it plays.
-  sultans = ENV["SONG"] == "sultans"
-  mode_launch = sultans ? "sultans_of_swing.launch.py" : "interactive_mode.launch.py"
-  clip = sultans ? "SultansOfSwingDemoClip.wav" : "DancingQueenDemoClip.wav"
-  audio = File.expand_path("~/spot_interactive_mode/media/#{clip}")
+  mode_launch, clip = {
+    "sultans" => ["sultans_of_swing.launch.py", "SultansOfSwingDemoClip.wav"],
+    "dior" => ["dior.launch.py", "DiorDemoClip.wav"],
+  }.fetch(ENV["SONG"], ["interactive_mode.launch.py", "DancingQueenDemoClip.wav"])
+  audio = File.join(ws, "media", clip)
   audio_arg = File.exist?(audio) ? "audio_file:=$HOME/spot_interactive_mode/media/#{clip}" : ""
   calibration = ENV["CALIBRATION"] == "1" ? "true" : "false"
-  joy_dev = ENV["JOY_DEV"] || "/dev/input/ps4_primary"
+  joy_dev = ENV["JOY_DEV"] || "/dev/input/ps4"
   # Each pane names itself (shown in the border; `stop` finds "mode" by it),
   # then sources the workspace and runs through its shell, so after a Ctrl-C
   # the pane stays open and Up + Enter relaunches just that piece.
   run = ->(title, cmd) {
-    "printf '\\033]2;#{title}\\033\\\\'; source /opt/ros/humble/setup.bash && " \
+    "printf '\\033]2;#{title}\\033\\\\'; source /opt/ros/$ROS_DISTRO/setup.bash && " \
     "source $HOME/spot_interactive_mode/install/setup.bash && #{cmd}"
   }
 %>
 name: interactive_mode
-root: ~/spot_interactive_mode
+root: <%= ws %>
 
 on_project_first_start: scripts/interactive_mode_stack.sh preflight || exit 1
 pre_window: 'tmux set-option -w pane-border-status top; tmux set-option -w pane-border-format " #{pane_index}: #{pane_title} "; [ -n "$IN_CONTAINER_NAME" ] || ./container shell'

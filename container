@@ -146,6 +146,21 @@ _DISPLAY="${DISPLAY-:0}"
 
 RUNNING_CONTAINER=$(docker container ls -q --filter name="^/${CONTAINER_NAME}$")
 
+# Worktrees share the container name, but a container only mounts the checkout
+# that started it. Hopping into one started elsewhere would run that checkout's
+# code and install, so refuse.
+check_running_root() {
+  [[ -n "$RUNNING_CONTAINER" ]] || return 0
+  local mounted
+  mounted=$(docker inspect "$RUNNING_CONTAINER" --format \
+    "{{range .Mounts}}{{if eq .Destination \"/home/$_UNAME/spot_interactive_mode\"}}{{.Source}}{{end}}{{end}}")
+  if [[ -n "$mounted" && "$mounted" != "$ROOT" ]]; then
+    echo "Container $CONTAINER_NAME is running from $mounted, not $ROOT." >&2
+    echo "Stop it first: $mounted/container stop" >&2
+    exit 1
+  fi
+}
+
 EXEC="/bin/bash -l"
 MOUNT_DATA=""
 # Filter out non-existent mounts
@@ -260,8 +275,8 @@ dockerbuild() {
       exit 1
   fi
   if [ "$DETECTED_PLATFORM" = "arm64" ] && [ "$ISJETSON" -eq 0 ]; then
-    echo "Detected non-Jetson ARM64 platform (e.g. macOS). Using Ubuntu 22.04 base image."
-    BASE_IMAGE_ARM64="ubuntu:22.04"
+    echo "Detected non-Jetson ARM64 platform (e.g. macOS). Using Ubuntu 24.04 base image."
+    BASE_IMAGE_ARM64="ubuntu:24.04"
   fi
   echo "  BASE_IMAGE_ARM64: $BASE_IMAGE_ARM64"
   
@@ -281,6 +296,11 @@ dockerbuild() {
   fi
   echo "  BASE_STAGE_NAME: $BASE_STAGE_NAME"
 
+  # Match the host's i2c group so the container user can open /dev/i2c-*
+  I2C_GID=$(getent group i2c | cut -d: -f3)
+  I2C_GID=${I2C_GID:-115}
+  echo "  I2C_GID: $I2C_GID"
+
   docker build \
     --network=host \
     --build-arg gid=$_GID \
@@ -289,6 +309,7 @@ dockerbuild() {
     --build-arg install_cuda=$INSTALL_CUDA \
     --build-arg BASE_IMAGE_ARM64=$BASE_IMAGE_ARM64 \
     --build-arg is_jetson=$IS_JETSON_BOOL \
+    --build-arg i2c_gid=$I2C_GID \
     --build-arg BASE_STAGE_NAME=$BASE_STAGE_NAME \
     --build-arg BLACKWELL_GPU=$BLACKWELL_GPU \
     -t $CONTAINER_NAME \
@@ -415,6 +436,7 @@ case $DOCKER_COMMAND in
     dockerrun
     ;;
   shell)
+    check_running_root
     [[ ! -z "$RUNNING_CONTAINER" ]] || dockerrun
     RUNNING_CONTAINER=$(docker container ls -q --filter name="^/${CONTAINER_NAME}$")
     dockershell
@@ -426,6 +448,7 @@ case $DOCKER_COMMAND in
       echo "Usage: $0 cmd [--name container_name] 'command'"
       exit 1
     fi
+    check_running_root
     [[ ! -z "$RUNNING_CONTAINER" ]] || dockerrun
     dockercmd "$COMMAND_TO_EXEC"
     ;;

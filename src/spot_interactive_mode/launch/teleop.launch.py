@@ -22,7 +22,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('joy_dev', default_value='/dev/input/ps4_primary',
+        DeclareLaunchArgument('joy_dev', default_value='/dev/input/ps4',
                               description='udev symlink for the PS4 pad (USB only)'),
         DeclareLaunchArgument('verbose', default_value='false'),
         Node(

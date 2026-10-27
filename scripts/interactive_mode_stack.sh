@@ -21,13 +21,15 @@ preflight() {
   [[ -f "$WS/media/DancingQueenDemoClip.wav" ]] ||
     warn "media/DancingQueenDemoClip.wav missing: Spot will dance without music."
 
-  local joy_dev="${JOY_DEV:-/dev/input/ps4_primary}"
+  local joy_dev="${JOY_DEV:-/dev/input/ps4}"
   [[ -e "$joy_dev" ]] ||
-    warn "$joy_dev not found: plug the PS4 controller in by USB (Bluetooth gives no input). The teleop pane retries."
+    warn "$joy_dev not found: plug the PS4 controller in by USB (Bluetooth gives no input). The teleop pane retries.
+       Plugged in already? Install the udev rule on the host: see config/99-ps4-controller.rules"
 
   # The installed package must match the source, or the controller bindings
   # (or any other recent change) won't be there.
-  local installed="$WS/install/spot_interactive_mode/lib/python3.10/site-packages" src rel
+  local installed src rel
+  installed="$WS/install/spot_interactive_mode/lib/python$(python3 -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')/site-packages"
   for src in "$WS"/src/spot_interactive_mode/spot_interactive_mode/*.py; do
     rel="spot_interactive_mode/$(basename "$src")"
     if ! cmp -s "$src" "$installed/$rel"; then

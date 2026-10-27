@@ -1,0 +1,64 @@
+{
+  "song": "Dior - Pop Smoke (DRAFT: section times are placeholders until the clip is cut and its downbeats measured)",
+  "bpm": null,
+  "clip_duration_sec": 44.0,
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.0,
+      "section": "intro",
+      "move": "bounce",
+      "type": "pose"
+    },
+    {
+      "start": 6.0,
+      "end": 13.2,
+      "section": "hook",
+      "move": "side_step",
+      "type": "cmd_vel",
+      "axis": "y",
+      "amplitude": 0.5,
+      "period": 1.2,
+      "locomotion_mode": 2
+    },
+    {
+      "start": 13.2,
+      "end": 19.2,
+      "section": "hook",
+      "move": "twerk",
+      "type": "pose"
+    },
+    {
+      "start": 19.2,
+      "end": 25.2,
+      "section": "verse",
+      "move": "groove",
+      "type": "pose"
+    },
+    {
+      "start": 25.2,
+      "end": 29.4,
+      "section": "verse",
+      "move": "foot_shuffle",
+      "type": "cmd_vel",
+      "axis": "x",
+      "amplitude": 0.6,
+      "period": 0.35,
+      "locomotion_mode": 8
+    },
+    {
+      "start": 29.4,
+      "end": 36.4,
+      "section": "hook",
+      "move": "turn_around_sway",
+      "type": "pose"
+    },
+    {
+      "start": 36.4,
+      "end": 44.0,
+      "section": "outro",
+      "move": "twist_down",
+      "type": "pose"
+    }
+  ]
+}

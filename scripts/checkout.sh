@@ -31,8 +31,13 @@ function clone_or_pull {
     fi
 }
 
-# Spot ROS 2 driver (also provides spot_msgs)
+# Spot ROS 2 driver (also provides spot_msgs). Pinned to the commit verified on
+# Jazzy; keep in sync with SPOT_ROS2_REF in scripts/install_spot_ros2.sh, which
+# installs this commit's rosdep dependencies into the image.
+SPOT_ROS2_REF=949feb7b0d702d1923e5b5dd5c0a4a7728ddc88f
 clone_or_pull main https://github.com/bdaiinstitute/spot_ros2.git spot_ros2
+git -C "$SRC_DIR/spot_ros2" checkout "$SPOT_ROS2_REF"
+git -C "$SRC_DIR/spot_ros2" submodule update --init --recursive
 
 # Lab repo containing spot_joy (PS4 teleop + deadman) and spot_nav2
 clone_or_pull master git@github.com:ut-amrl/spot_nav.git spot_nav

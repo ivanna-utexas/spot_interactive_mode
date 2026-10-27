@@ -16,6 +16,11 @@ UT Austin AMRL. Following and gaze come from the companion "dog mode"
 Dancing Queen work. This repo adds the state machine that switches between
 them safely.
 
+**Platform:** the robot computer is a Jetson AGX Thor (JetPack 7 / L4T R38,
+Ubuntu 24.04, CUDA 13). The container runs ROS 2 Jazzy on
+`nvcr.io/nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04` with TensorRT 10.13.
+The earlier Jetson Orin (JetPack 6 / ROS 2 Humble) setup is on `main`.
+
 ---
 
 ## Status (Oct 2, 2026)
@@ -31,7 +36,7 @@ them safely.
 **Open blockers. Fix these before the next robot session:**
 
 1. **LiDAR sends its data to the wrong address.** The Velodyne (`192.168.50.201`)
-   streams to `192.168.50.10`, but the Orin is `192.168.50.100`, and nothing
+   streams to `192.168.50.10`, but the robot computer is `192.168.50.100`, and nothing
    answers at `.10`. With no point cloud there are no people detections, so stay
    and follow have nothing to react to. Fix: open `http://192.168.50.201`, set
    the Host (Destination) IP to `192.168.50.100`, then **Set** and **Save
@@ -46,8 +51,6 @@ Also still to do: set the calibrated `audio_lead_sec` (the team's summer value).
 ---
 
 ## One-time setup
-
-Run on the Orin (`ssh ros@10.1.0.3`) unless noted.
 
 ```bash
 # 1. Clone with submodules (CUDA-CenterPoint and its nested submodules)
@@ -71,7 +74,7 @@ Then **inside the container** (`./container shell`, prompt starts with `[docker]
 
 ```bash
 cd ~/spot_interactive_mode
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 ./scripts/generate_centerpoint_engine.sh     # once per machine/container
 
 colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release \
@@ -103,7 +106,7 @@ Host or container: from the host, every pane hops into the container
 itself. This opens every pane below (driver, Velodyne, people tracking,
 teleop, interactive mode + dog mode, mode keys) in one tmux session,
 `interactive_mode`, with each pane's name in its border. It also starts a
-VNC desktop on `:9` (connect to the Orin on port 5909; the first run in a
+VNC desktop on `:9` (connect to the robot computer on port 5909; the first run in a
 fresh container asks for a VNC password in the vnc pane) with rviz showing
 the LiDAR points and CenterPoint people markers (`rviz2/interactive_mode.rviz`,
 copied from companion mode's `auto_dog_mode.rviz`). The same view runs full
@@ -138,7 +141,7 @@ To start the panes by hand instead, follow the next two sections.
 ### Get into the container first
 
 ROS exists only inside the container. If `source install/setup.bash` prints
-`not found: "/opt/ros/humble/local_setup.bash"`, you are on the host.
+`not found: "/opt/ros/jazzy/local_setup.bash"`, you are on the host.
 
 ```bash
 cd ~/spot_interactive_mode
@@ -165,6 +168,8 @@ Notes:
 - **Pane 4:** use `spot_interactive_mode teleop.launch.py`, **not**
   `spot_joy teleop.launch.py` (see blocker 2). The PS4 controller must be
   plugged in by **USB**; Bluetooth pairs but never produces input on this kernel.
+  The pad appears as `/dev/input/ps4` once `config/99-ps4-controller.rules`
+  is installed on the host (one-time, commands in the file).
 - **Pane 5** also starts dog mode with the right settings. **Do not** also run
   `spot_dog_mode dog_mode.launch.py`: two copies would fight.
 - Dance-only test: panes 2 and 3 can be skipped.
@@ -275,12 +280,18 @@ negative if after.
 
 ### Picking the song
 
-Two routines ship, both run by the same node with the same controls:
+Three routines ship, all run by the same node with the same controls:
 
 | Song | Start it with | Clip (in `media/`, not in git) |
 | --- | --- | --- |
 | Dancing Queen (44 s, default) | `interactive_mode.launch.py` / `tmuxinator local` | `DancingQueenDemoClip.wav` |
 | Sultans of Swing (46 s, outro solo) | `sultans_of_swing.launch.py` / `SONG=sultans tmuxinator local` | `SultansOfSwingDemoClip.wav` |
+| Dior, Pop Smoke (44 s, draft) | `dior.launch.py` / `SONG=dior tmuxinator local` | `DiorDemoClip.wav` |
+
+Dior's timeline (`config/dior.json`) is a draft: it reuses Dancing Queen's
+moves and gaits, with placeholder section times. Once you have your own copy
+of the song, cut a 44 s clip to `media/DiorDemoClip.wav` and move the section
+boundaries onto its downbeats.
 
 Sultans of Swing, bar by bar (~148.5 BPM; each section starts on a downbeat
 detected in the clip, so the moves stay on the beat even as the band drifts):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check_platform_matrix.sh — Verify the Orin/Docker/ROS runtime matches expectations.
+# check_platform_matrix.sh — Verify the Thor/Docker/ROS runtime matches expectations.
 # Usage: ./scripts/check_platform_matrix.sh
 # Returns 0 if all checks pass, 1 otherwise.
 set -euo pipefail
@@ -24,20 +24,20 @@ fi
 # 2. Ubuntu version
 if [ -f /etc/os-release ]; then
     . /etc/os-release
-    if [[ "${VERSION_ID:-}" == "22.04" ]]; then
-        pass "Ubuntu $VERSION_ID (Jammy)"
+    if [[ "${VERSION_ID:-}" == "24.04" ]]; then
+        pass "Ubuntu $VERSION_ID (Noble)"
     else
-        fail "Ubuntu ${VERSION_ID:-unknown}, expected 22.04"
+        fail "Ubuntu ${VERSION_ID:-unknown}, expected 24.04"
     fi
 else
     fail "/etc/os-release not found"
 fi
 
 # 3. ROS 2 distro
-if [[ "${ROS_DISTRO:-}" == "humble" ]]; then
+if [[ "${ROS_DISTRO:-}" == "jazzy" ]]; then
     pass "ROS_DISTRO=$ROS_DISTRO"
 else
-    fail "ROS_DISTRO=${ROS_DISTRO:-unset}, expected humble"
+    fail "ROS_DISTRO=${ROS_DISTRO:-unset}, expected jazzy"
 fi
 
 # 4. RMW implementation
@@ -57,7 +57,7 @@ else
 fi
 
 # 6. Key ROS packages installed
-for pkg in ros-humble-velodyne ros-humble-rmw-cyclonedds-cpp ros-humble-pcl-conversions; do
+for pkg in ros-jazzy-velodyne ros-jazzy-rmw-cyclonedds-cpp ros-jazzy-pcl-conversions; do
     if dpkg -l "$pkg" &>/dev/null; then
         pass "APT package: $pkg"
     else
@@ -88,6 +88,29 @@ elif [ -d /usr/local/cuda ]; then
     pass "CUDA directory exists at /usr/local/cuda"
 else
     warn "CUDA not detected (GPU acceleration unavailable)"
+fi
+
+# 9b. Python, TensorRT and GPU (Jetson Thor: Python 3.12, TensorRT 10.13+, sm_110)
+PY_VER=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+if [[ "$PY_VER" == "3.12" ]]; then
+    pass "Python $PY_VER"
+else
+    fail "Python $PY_VER, expected 3.12"
+fi
+TRT_HEADER=/usr/include/$(uname -m)-linux-gnu/NvInferVersion.h
+if [[ -f "$TRT_HEADER" ]]; then
+    TRT_VER=$(dpkg-query -W -f='${Version}' libnvinfer10 2>/dev/null || echo unknown)
+    pass "TensorRT $TRT_VER"
+else
+    warn "TensorRT headers not found (people_detector will not build)"
+fi
+if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+    GPU_CC=$(python3 -c 'import torch; print("%d.%d" % torch.cuda.get_device_capability()) if torch.cuda.is_available() else print("none")' 2>/dev/null || echo "none")
+    if [[ "$GPU_CC" == "11.0" ]]; then
+        pass "GPU compute capability $GPU_CC (Thor)"
+    else
+        fail "GPU compute capability $GPU_CC, expected 11.0 (is the container running with --runtime nvidia?)"
+    fi
 fi
 
 # 10. Docker IPC mode (check /proc for shared memory)

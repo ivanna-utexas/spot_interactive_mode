@@ -62,7 +62,7 @@ for detector setup, engine generation, interfaces, and tuning.
 
 Before starting dog mode:
 
-- Run on the Jetson Orin container with CUDA and TensorRT available.
+- Run on the Jetson Thor container with CUDA and TensorRT available.
 - Generate the CenterPoint TensorRT engine at least once.
 - Publish `sensor_msgs/msg/PointCloud2` on `/velodyne_points`.
 - Provide TF from the point-cloud frame to `odom`, and from `odom` to `body`.
