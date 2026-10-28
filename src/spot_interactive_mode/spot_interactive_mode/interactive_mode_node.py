@@ -99,7 +99,7 @@ class InteractiveModeNode(Node):
         p('timeline', '')
         p('calibration_mode', False)
         p('audio_file', '')
-        p('audio_device', 'plughw:3,0')   # ALSA 'default' is not configured here
+        p('audio_device', 'plughw:CARD=Device,DEV=0')   # ALSA 'default' is not configured here
         p('audio_lead_sec', 0.0)
         p('abort_ramp_sec', 0.5)
         p('rest_locomotion_mode', 1)      # teleop walk mode's gait

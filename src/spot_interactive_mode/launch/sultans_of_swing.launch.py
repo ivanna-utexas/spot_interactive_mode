@@ -1,7 +1,7 @@
-"""Interactive mode with the Sultans of Swing dance instead of Dancing Queen.
+"""Interactive mode with the Sultans of Swing dance.
 
-Same node, same modes and controls (dance = Circle / `d`, R1 held); only
-the choreography and the music change. Every other interactive_mode.launch.py
+Sultans of Swing is now interactive_mode.launch.py's default, so this is the
+same thing under the song's name. Every other interactive_mode.launch.py
 argument (audio_lead_sec, calibration_mode, start_mode, include_tracking)
 still works here.
 

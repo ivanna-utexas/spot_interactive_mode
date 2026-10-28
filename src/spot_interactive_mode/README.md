@@ -69,8 +69,8 @@ Options, then Square.
 
 ```bash
 # with the Spot driver, Velodyne, teleop and CenterPoint already running
+# (dances to media/SultansOfSwingDemoClip.wav; dancing_queen.launch.py for ABBA)
 ros2 launch spot_interactive_mode interactive_mode.launch.py \
-    audio_file:=$HOME/spot_interactive_mode/media/DancingQueenDemoClip.wav \
     audio_lead_sec:=<calibrated value>
 
 # switch modes (operator)

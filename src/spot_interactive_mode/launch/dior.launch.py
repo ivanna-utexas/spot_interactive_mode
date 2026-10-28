@@ -1,4 +1,4 @@
-"""Interactive mode with the Dior (Pop Smoke) dance instead of Dancing Queen.
+"""Interactive mode with the Dior (Pop Smoke) dance instead of Sultans of Swing.
 
 Same node, same modes and controls (dance = Circle / `d`, R1 held); only
 the choreography and the music change. Every other interactive_mode.launch.py

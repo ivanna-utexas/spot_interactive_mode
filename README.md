@@ -6,7 +6,7 @@ Spot can:
 
 - **stay**: hold its position and look at the nearest person,
 - **follow**: turn toward a person and walk after them, stopping about 1 m away,
-- **dance**: play the 44 s Dancing Queen routine with music.
+- **dance**: play a dance routine with music (Sultans of Swing by default).
 
 Modes are switched from the PS4 controller or a terminal. Voice switching (Milestones 2–3)
 uses the same interface.
@@ -64,7 +64,8 @@ cd ~/spot_interactive_mode
 # 3. Copy in two files that are deliberately NOT in git:
 mkdir -p params media
 cp ~/spot_companion_mode/params/spot_driver.yaml params/   # holds the Spot login
-cp ~/dance_ws/DancingQueenDemoClip.wav media/                 # copyrighted, 7.7 MB
+cp ~/dance_ws/SultansOfSwingDemoClip.wav media/              # copyrighted, 8.2 MB (default song)
+cp ~/dance_ws/DancingQueenDemoClip.wav media/                 # copyrighted, 7.7 MB (optional)
 
 # 4. Build the image and start the container (the name is stored in config/name)
 ./container build
@@ -159,7 +160,7 @@ Each pane needs `source ~/spot_interactive_mode/install/setup.bash` first.
 | 2 | Velodyne | `ros2 launch spot_velodyne velodyne.launch.py device_ip:=192.168.50.201` | stay, follow |
 | 3 | People tracking | `ros2 launch people_detector pedestrian_tracking.launch.py` | stay, follow |
 | 4 | Teleop | `ros2 launch spot_interactive_mode teleop.launch.py` | everything |
-| 5 | Interactive mode | `ros2 launch spot_interactive_mode interactive_mode.launch.py audio_file:=$HOME/spot_interactive_mode/media/DancingQueenDemoClip.wav` | everything |
+| 5 | Interactive mode | `ros2 launch spot_interactive_mode interactive_mode.launch.py` (plays `media/SultansOfSwingDemoClip.wav`) | everything |
 | 6 | Mode keys | `ros2 run spot_interactive_mode mode_keyboard` | switching modes |
 
 Notes:
@@ -235,7 +236,7 @@ there's no terminal stand-in for the deadman.
 | idle | Nothing autonomous; the operator has Spot. Start-up state. | — |
 | stay | Looks at the nearest person by moving its body; feet stay planted | standing |
 | follow | Turns toward you and walks after you, stopping ~1 m away | standing |
-| dance | 44 s Dancing Queen routine with music, then stay | standing, **R1 held when requested** |
+| dance | dance routine with music (Sultans of Swing by default), then stay | standing, **R1 held when requested** |
 
 ### Switching modes from a terminal
 
@@ -280,12 +281,14 @@ negative if after.
 
 ### Picking the song
 
-Three routines ship, all run by the same node with the same controls:
+Three routines ship, all run by the same node with the same controls. Each
+launch file plays its clip from `~/spot_interactive_mode/media/` by default
+(`audio_file:=<path>` overrides it); a missing clip only means no music:
 
 | Song | Start it with | Clip (in `media/`, not in git) |
 | --- | --- | --- |
-| Dancing Queen (44 s, default) | `interactive_mode.launch.py` / `tmuxinator local` | `DancingQueenDemoClip.wav` |
-| Sultans of Swing (46 s, outro solo) | `sultans_of_swing.launch.py` / `SONG=sultans tmuxinator local` | `SultansOfSwingDemoClip.wav` |
+| Sultans of Swing (46 s, outro solo, default) | `interactive_mode.launch.py` / `tmuxinator local` | `SultansOfSwingDemoClip.wav` |
+| Dancing Queen (44 s) | `dancing_queen.launch.py` / `SONG=queen tmuxinator local` | `DancingQueenDemoClip.wav` |
 | Dior, Pop Smoke (44 s, draft) | `dior.launch.py` / `SONG=dior tmuxinator local` | `DiorDemoClip.wav` |
 
 Dior's timeline (`config/dior.json`) is a draft: it reuses Dancing Queen's
@@ -375,9 +378,9 @@ from the controller, so they always hold it.
 | What | Where |
 | --- | --- |
 | Launch options (pane 5): `audio_file`, `audio_lead_sec`, `calibration_mode:=true`, `start_mode:=stay`, `include_tracking:=true` | command line |
-| Thresholds, timeouts, audio device (`plughw:3,0`), where to go after a dance | `src/spot_interactive_mode/config/interactive_mode.yaml` |
+| Thresholds, timeouts, audio device (`plughw:CARD=Device,DEV=0`), where to go after a dance | `src/spot_interactive_mode/config/interactive_mode.yaml` |
 | Dog-mode settings under interactive mode, including **follow distance** (`approach_distance`, read once at launch) | `src/spot_interactive_mode/config/dog_mode_overrides.yaml` |
-| Choreography (read at launch, no rebuild needed) | `src/spot_interactive_mode/config/timeline.json` (Dancing Queen), `sultans_of_swing.json` |
+| Choreography (read at launch, no rebuild needed) | `src/spot_interactive_mode/config/sultans_of_swing.json` (default), `timeline.json` (Dancing Queen), `dior.json` |
 
 Settings you can change while it's running (they apply on the next switch into that mode):
 
@@ -424,8 +427,9 @@ Inside `src/spot_interactive_mode/spot_interactive_mode/`:
 | `joy_bindings.py` | PS4 mode buttons (which input requests which mode, once per press) |
 | `screen_windows.py` | Spot-mounted screen: rviz full screen, `v` flips eyes / tracking (X11 via ctypes) |
 
-Launch files: `interactive_mode.launch.py` (dog mode + interactive node) and
-`teleop.launch.py` (PS4 controller driver + `spot_joy` teleop).
+Launch files: `interactive_mode.launch.py` (dog mode + interactive node,
+Sultans of Swing), `dancing_queen.launch.py` / `dior.launch.py` (same with
+another song) and `teleop.launch.py` (PS4 controller driver + `spot_joy` teleop).
 
 ### Tests
 

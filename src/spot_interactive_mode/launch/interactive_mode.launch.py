@@ -3,8 +3,11 @@
 Expects already running (as in the auto_dog_mode tmux session): the Spot
 driver, Velodyne, teleop (spot_joy + joy_linux), and optionally CenterPoint.
 
-  ros2 launch spot_interactive_mode interactive_mode.launch.py \
-      audio_file:=/home/ros/spot_interactive_mode/media/DancingQueenDemoClip.wav
+  ros2 launch spot_interactive_mode interactive_mode.launch.py
+
+Dances to Sultans of Swing by default (media/SultansOfSwingDemoClip.wav);
+dancing_queen.launch.py and dior.launch.py swap the timeline and the clip.
+A missing clip only means Spot dances without music.
 """
 
 import os
@@ -27,8 +30,10 @@ def generate_launch_description():
     args = [
         DeclareLaunchArgument('include_tracking', default_value='false',
                               description='Also launch CUDA-CenterPoint people tracking'),
-        DeclareLaunchArgument('timeline', default_value=os.path.join(pkg, 'config', 'timeline.json')),
-        DeclareLaunchArgument('audio_file', default_value=''),
+        DeclareLaunchArgument('timeline',
+                              default_value=os.path.join(pkg, 'config', 'sultans_of_swing.json')),
+        DeclareLaunchArgument('audio_file', default_value=os.path.expanduser(
+            '~/spot_interactive_mode/media/SultansOfSwingDemoClip.wav')),
         DeclareLaunchArgument('audio_lead_sec', default_value='0.0'),
         DeclareLaunchArgument('calibration_mode', default_value='false'),
         DeclareLaunchArgument('start_mode', default_value='idle'),

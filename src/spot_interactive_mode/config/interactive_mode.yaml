@@ -35,10 +35,10 @@ interactive_mode:
     follow_allow_turn: true
 
     # Dance
-    timeline: ""                   # set by the launch file (package timeline.json)
+    timeline: ""                   # set by the launch file (default sultans_of_swing.json)
     calibration_mode: false
-    audio_file: ""                 # e.g. /home/ros/spot_interactive_mode/media/DancingQueenDemoClip.wav
-    audio_device: "plughw:3,0"
+    audio_file: ""                 # set by the launch file (default media/SultansOfSwingDemoClip.wav)
+    audio_device: "plughw:CARD=Device,DEV=0"   # USB speaker, by name: card numbers move (3 is the Kinect mic on Thor)
     audio_lead_sec: 0.0            # TODO: copy the team's calibrated value
     abort_ramp_sec: 0.5
     rest_locomotion_mode: 1        # gait restored after a dance (teleop walk mode)

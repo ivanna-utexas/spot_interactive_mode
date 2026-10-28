@@ -18,8 +18,15 @@ fail() { printf '\033[0;31m[FAIL]\033[0m %s\n' "$1"; exit 1; }
 preflight() {
   [[ -f "$WS/install/setup.bash" ]] || fail "No install/ yet. Build first (see README, One-time setup)."
   [[ -f "$WS/params/spot_driver.yaml" ]] || fail "params/spot_driver.yaml missing (holds the Spot login; not in git)."
-  [[ -f "$WS/media/DancingQueenDemoClip.wav" ]] ||
-    warn "media/DancingQueenDemoClip.wav missing: Spot will dance without music."
+  # Same SONG -> clip mapping as the tmuxinator project.
+  local clip
+  case "${SONG:-}" in
+    queen) clip=DancingQueenDemoClip.wav ;;
+    dior) clip=DiorDemoClip.wav ;;
+    *) clip=SultansOfSwingDemoClip.wav ;;
+  esac
+  [[ -f "$WS/media/$clip" ]] ||
+    warn "media/$clip missing: Spot will dance without music."
 
   local joy_dev="${JOY_DEV:-/dev/input/ps4}"
   [[ -e "$joy_dev" ]] ||
